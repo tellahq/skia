@@ -1,0 +1,50 @@
+# Skia build options
+
+# Graphics backend options
+option('gl', type: 'feature', value: 'auto',
+       description: 'Build with OpenGL support')
+
+option('egl', type: 'feature', value: 'auto',
+       description: 'Build with EGL support (requires GL)')
+
+option('x11', type: 'feature', value: 'auto',
+       description: 'Build with X11 support (requires GL)')
+
+option('wayland', type: 'feature', value: 'auto',
+       description: 'Build with Wayland support (requires EGL)')
+
+option('vulkan', type: 'feature', value: 'auto',
+       description: 'Build with Vulkan support')
+
+option('metal', type: 'feature', value: 'auto',
+       description: 'Build with Metal support (macOS/iOS only)')
+
+option('d3d', type: 'feature', value: 'auto',
+       description: 'Build with Direct3D support (Windows only)')
+
+# Feature options
+option('textlayout', type: 'feature', value: 'auto',
+       description: 'Enable text layout support (skshaper, skparagraph)')
+
+option('svg', type: 'feature', value: 'auto',
+       description: 'Enable SVG rendering support')
+
+option('pdf', type: 'feature', value: 'auto',
+       description: 'Enable PDF rendering support')
+
+option('webp-encode', type: 'feature', value: 'auto',
+       description: 'Enable WebP encoding support')
+
+option('webp-decode', type: 'feature', value: 'auto',
+       description: 'Enable WebP decoding support')
+
+# FreeType options (Linux/Unix only)
+option('embed-freetype', type: 'feature', value: 'disabled',
+       description: 'Embed FreeType instead of using system version')
+
+option('freetype-woff2', type: 'feature', value: 'disabled',
+       description: 'Enable FreeType WOFF2 support')
+
+# Build configuration
+option('use-system-libraries', type: 'boolean', value: false,
+       description: 'Use system libraries instead of bundled versions (libpng, zlib, etc.)')
