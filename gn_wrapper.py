@@ -120,10 +120,14 @@ class SkiaBuilder:
 
         # Set target OS and architecture
         target_cpu = platform.machine()
-        if target_cpu == "arm64":
+        if target_cpu == "aarch64":
             target_cpu = "arm64"
         elif target_cpu == "x86_64" or target_cpu == "AMD64":
             target_cpu = "x64"
+        elif target_cpu == "i686" or target_cpu == "i386":
+            target_cpu = "x86"
+        elif target_cpu == "riscv64gc":
+            target_cpu = "riscv64"
 
         if self.host_system == "darwin":
             gn_args.append('target_os="mac"')

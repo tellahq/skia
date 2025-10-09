@@ -19,6 +19,11 @@ python = import('python').find_installation()
 gn_wrapper = find_program('gn_wrapper.py')
 ninja = find_program('ninja', required: true)
 
+# Track gn_wrapper.py for automatic reconfiguration
+# Using configure_file with copy:true makes Meson track this file
+# and reconfigure when it changes
+configure_file(input: 'gn_wrapper.py', output: 'gn_wrapper.py', copy: true)
+
 # We are now in the Skia source directory
 skia_dir = meson.current_source_dir()
 
