@@ -474,7 +474,7 @@ foreach libname, libinfo: pkg_libs
 endforeach
 
 # Add the base skia library after installing othe libraries heade
-pkg_libs = {
+pkg_libs += {
   'skia': {
     'description': 'Skia Graphics Library',
     'requires': [],
