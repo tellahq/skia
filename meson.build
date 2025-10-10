@@ -409,12 +409,6 @@ meson.override_dependency('skia', skia_dep)
 
 # Libraries are installed via the custom_target install: true parameter above
 
-# Install headers
-install_subdir('include',
-  install_dir: get_option('includedir') / 'skia',
-  strip_directory: false,
-)
-
 # Generate pkg-config files using Meson's pkgconfig module
 pkg = import('pkgconfig')
 
@@ -434,12 +428,7 @@ if defines_map == {} and shared_defines_map != {}
 endif
 
 # Define all libraries and their metadata
-pkg_libs = {
-  'skia': {
-    'description': 'Skia Graphics Library',
-    'requires': [],
-  },
-}
+pkg_libs = {}
 
 # Add textlayout libraries if enabled
 if 'textlayout' in features
@@ -455,13 +444,42 @@ if 'textlayout' in features
     'skunicode_core': {
       'description': 'Skia Unicode Core Library',
       'requires': ['skia'],
+      'headers_dirs': 'skunicode',
     },
     'skunicode_icu': {
       'description': 'Skia Unicode ICU Library',
       'requires': ['skia', 'skunicode_core'],
+      'no_headers': true,
     },
   }
+
 endif
+
+# Install headers
+install_subdir('include',
+  install_dir: get_option('includedir') / 'skia',
+  strip_directory: false,
+)
+
+foreach libname, libinfo: pkg_libs
+  if libinfo.get('no_headers', false)
+    continue
+  endif
+
+  headers_dir = libinfo.get('headers_dirs', libname)
+  install_subdir(f'modules/@headers_dir@/include',
+    install_dir: get_option('includedir') / 'skia' / 'include' / 'modules' / headers_dir,
+    strip_directory: false,
+  )
+endforeach
+
+# Add the base skia library after installing othe libraries heade
+pkg_libs = {
+  'skia': {
+    'description': 'Skia Graphics Library',
+    'requires': [],
+  },
+}
 
 # Add SVG libraries if enabled (when implemented)
 if 'svg' in features
