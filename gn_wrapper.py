@@ -112,7 +112,6 @@ class SkiaBuilder:
         # Basic build configuration
         gn_args.append(f"is_official_build={str(not self.is_debug).lower()}")
         gn_args.append(f"is_debug={str(self.is_debug).lower()}")
-        gn_args.append("treat_warnings_as_errors=false")
 
         # Set compilers
         gn_args.append(f'cc="{cc}"')

@@ -477,7 +477,7 @@ endif
 # Generate pkg-config files for all libraries
 foreach lib_name, lib_info : pkg_libs
   # Get defines for this specific library, default to empty
-  lib_cflags = ['-I${skia_includedir}']
+  lib_cflags = ['-I${skia_includedir}', '-I${skia_includedir}/include']
   if lib_name in defines_map
     lib_cflags += defines_map[lib_name]
   endif
