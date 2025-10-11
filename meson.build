@@ -461,6 +461,14 @@ install_subdir('include',
   strip_directory: false,
 )
 
+# FIXME: Skia bug - public headers shouldn't include from modules/ directly
+# Several headers in include/ (e.g., include/core/SkColorSpace.h) directly
+# include "modules/skcms/skcms.h", which breaks compilation for downstream
+# projects. We need to install this module header until Skia fixes this.
+install_data('modules/skcms/skcms.h',
+  install_dir: get_option('includedir') / 'skia' / 'modules' / 'skcms',
+)
+
 foreach libname, libinfo: pkg_libs
   if libinfo.get('no_headers', false)
     continue
