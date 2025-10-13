@@ -461,12 +461,63 @@ install_subdir('include',
   strip_directory: false,
 )
 
-# FIXME: Skia bug - public headers shouldn't include from modules/ directly
-# Several headers in include/ (e.g., include/core/SkColorSpace.h) directly
-# include "modules/skcms/skcms.h", which breaks compilation for downstream
-# projects. We need to install this module header until Skia fixes this.
+# ============================================================================
+# Install additional Skia headers required by language bindings
+# ============================================================================
+# Language bindings (like Rust's skia-safe) use FFI layers with C++ wrapper
+# code that needs access to Skia implementation headers beyond what's in
+# include/. These headers live in modules/ and src/ and must be installed
+# for the binding's C++ code to compile.
+#
+# Specifically required:
+#
+# 1. modules/skcms headers:
+#    - Public Skia headers like include/core/SkColorSpace.h include
+#      "modules/skcms/skcms.h" and "modules/skcms/src/skcms_public.h"
+#    - These are transitively required by any code using color management APIs
+#
+# 2. src/gpu/ganesh headers:
+#    - FFI wrapper code needs internal GPU headers like
+#      "src/gpu/ganesh/gl/GrGLDefines.h" to expose low-level GL functionality
+#    - Without these: fatal error: src/gpu/ganesh/gl/GrGLDefines.h: No such file
+#
+# 3. src/base and src/core headers:
+#    - Module public headers (svg, skparagraph) include private utilities like
+#      "src/base/SkTLazy.h", "src/core/SkTHash.h", and "src/core/SkLRUCache.h"
+#    - These are needed when compiling against the skparagraph or svg modules
+#
+# This installation makes these headers available at their expected paths
+# under the install prefix, enabling language bindings to build successfully.
+# ============================================================================
+
+# Install skcms implementation headers
+# Note: install into .../modules/skcms (not .../modules/skcms/src) to avoid nested "src/src" path
+install_subdir('modules/skcms/src',
+  install_dir: get_option('includedir') / 'skia' / 'modules' / 'skcms',
+  strip_directory: false,
+)
+
+# Install skcms public module header
 install_data('modules/skcms/skcms.h',
   install_dir: get_option('includedir') / 'skia' / 'modules' / 'skcms',
+)
+
+# Install Ganesh private implementation headers
+# Strip top directory so src/gpu/ganesh/gl/foo.h installs to .../src/gpu/ganesh/gl/foo.h
+install_subdir('src/gpu/ganesh',
+  install_dir: get_option('includedir') / 'skia' / 'src' / 'gpu' / 'ganesh',
+  strip_directory: true,
+)
+
+# Install private core headers needed by modules/skunicode and skparagraph
+install_subdir('src/base',
+  install_dir: get_option('includedir') / 'skia' / 'src',
+  strip_directory: false,  # => /usr/include/skia/src/base/SkUTF.h
+)
+
+install_subdir('src/core',
+  install_dir: get_option('includedir') / 'skia' / 'src',
+  strip_directory: false,  # => /usr/include/skia/src/core/SkLRUCache.h
 )
 
 foreach libname, libinfo: pkg_libs
@@ -477,7 +528,14 @@ foreach libname, libinfo: pkg_libs
   headers_dir = libinfo.get('headers_dirs', libname)
   install_subdir(f'modules/@headers_dir@/include',
     install_dir: get_option('includedir') / 'skia' / 'include' / 'modules' / headers_dir,
-    strip_directory: false,
+    strip_directory: true,
+  )
+
+  # Also install under skia/modules/<name>/include so includes starting at "modules/..."
+  # resolve when consumers only pass -I/usr/include/skia (common with pkg-config cflags)
+  install_subdir(f'modules/@headers_dir@/include',
+    install_dir: get_option('includedir') / 'skia' / 'modules' / headers_dir / 'include',
+    strip_directory: true,
   )
 endforeach
 
