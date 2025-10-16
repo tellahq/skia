@@ -10,6 +10,7 @@
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkScalar.h"
+#include "include/private/base/SkAPI.h"
 #include "modules/skparagraph/include/DartTypes.h"
 #include "modules/skparagraph/include/FontArguments.h"
 #include "modules/skparagraph/include/ParagraphPainter.h"
@@ -148,7 +149,7 @@ struct PlaceholderStyle {
     SkScalar fBaselineOffset = 0;
 };
 
-class TextStyle {
+class SK_API TextStyle {
 public:
     TextStyle() = default;
     TextStyle(const TextStyle& other) = default;

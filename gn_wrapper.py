@@ -142,11 +142,6 @@ class SkiaBuilder:
         extra_cflags = []
         extra_cflags_cc = []
 
-        # For shared libraries, override default symbol visibility
-        # Skia's BUILD.gn sets -fvisibility=hidden by default, but we need symbols exported
-        if self.build_shared:
-            extra_cflags.append('"-fvisibility=default"')
-
         # Add macOS deployment target defines and C++ include path if set
         if self.host_system == "darwin":
             # Get CPPFLAGS from environment if set (for C++ include paths)

@@ -5,6 +5,7 @@
 #include "include/core/SkFontStyle.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkString.h"
+#include "include/private/base/SkAPI.h"
 #include "modules/skparagraph/include/DartTypes.h"
 #include "modules/skparagraph/include/TextStyle.h"
 
@@ -18,7 +19,7 @@
 namespace skia {
 namespace textlayout {
 
-struct StrutStyle {
+struct SK_API StrutStyle {
     StrutStyle();
 
     const std::vector<SkString>& getFontFamilies() const { return fFontFamilies; }
@@ -75,7 +76,7 @@ private:
     bool fHalfLeading;
 };
 
-struct ParagraphStyle {
+struct SK_API ParagraphStyle {
     ParagraphStyle();
 
     bool operator==(const ParagraphStyle& rhs) const {

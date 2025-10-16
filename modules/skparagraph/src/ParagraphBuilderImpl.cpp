@@ -62,7 +62,7 @@ sk_sp<SkUnicode> get_unicode() {
 }
 }
 
-std::unique_ptr<ParagraphBuilder> ParagraphBuilder::make(const ParagraphStyle& style,
+SK_API std::unique_ptr<ParagraphBuilder> ParagraphBuilder::make(const ParagraphStyle& style,
                                                          sk_sp<FontCollection> fontCollection) {
     return ParagraphBuilderImpl::make(style, std::move(fontCollection), get_unicode());
 }
@@ -79,7 +79,7 @@ ParagraphBuilderImpl::ParagraphBuilderImpl(
 
 #endif  // !defined(SK_DISABLE_LEGACY_PARAGRAPH_UNICODE)
 
-std::unique_ptr<ParagraphBuilder> ParagraphBuilder::make(const ParagraphStyle& style,
+SK_API std::unique_ptr<ParagraphBuilder> ParagraphBuilder::make(const ParagraphStyle& style,
                                                          sk_sp<FontCollection> fontCollection,
                                                          sk_sp<SkUnicode> unicode) {
     return ParagraphBuilderImpl::make(style, std::move(fontCollection), std::move(unicode));

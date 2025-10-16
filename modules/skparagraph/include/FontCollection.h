@@ -8,6 +8,7 @@
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSpan.h"
+#include "include/private/base/SkAPI.h"
 #include "modules/skparagraph/include/FontArguments.h"
 #include "modules/skparagraph/include/ParagraphCache.h"
 #include "modules/skparagraph/include/TextStyle.h"
@@ -18,7 +19,7 @@ namespace textlayout {
 
 class TextStyle;
 class Paragraph;
-class FontCollection : public SkRefCnt {
+class SK_API FontCollection : public SkRefCnt {
 public:
     FontCollection();
 
