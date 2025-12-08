@@ -431,7 +431,7 @@ class SkiaBuilder:
                 check=False,
             )
 
-            deps = set()
+            deps = set([self.src_dir / "BUILD.gn"])
             for line in result.stdout.split("\n"):
                 # Dependency lines are indented and start with whitespace
                 if line.startswith("    "):
