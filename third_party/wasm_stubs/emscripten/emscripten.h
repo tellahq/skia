@@ -5,7 +5,10 @@
 
 #pragma once
 
-#define EMSCRIPTEN_KEEPALIVE __attribute__((used))
+// EMSCRIPTEN_KEEPALIVE: prevent dead-code elimination AND export from WASM.
+// visibility("default") ensures wasm-ld includes the symbol in the export
+// table, so the JS side can call emwgpuCreate*/emwgpuOn* functions.
+#define EMSCRIPTEN_KEEPALIVE __attribute__((used, visibility("default")))
 #define EM_IMPORT(name) __attribute__((import_module("env")))
 
 static inline int emscripten_has_asyncify(void) { return 0; }
