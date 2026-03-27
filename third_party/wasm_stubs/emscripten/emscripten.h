@@ -11,4 +11,8 @@
 #define EMSCRIPTEN_KEEPALIVE __attribute__((used, visibility("default")))
 #define EM_IMPORT(name) __attribute__((import_module("env")))
 
-static inline int emscripten_has_asyncify(void) { return 0; }
+// Return 1 to satisfy emdawnwebgpu's TimedWaitAny guard.
+// We don't actually have Asyncify, but the WaitAny implementation
+// falls through to emwgpuWaitAny (JS) which we implement as immediate
+// resolution. The assert(emscripten_has_asyncify()) is stripped in NDEBUG.
+static inline int emscripten_has_asyncify(void) { return 1; }
