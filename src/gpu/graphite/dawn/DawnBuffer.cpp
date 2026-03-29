@@ -15,7 +15,7 @@
 
 namespace skgpu::graphite {
 namespace {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 bool is_map_succeeded(WGPUBufferMapAsyncStatus status) {
     return status == WGPUBufferMapAsyncStatus_Success;
 }
@@ -86,7 +86,7 @@ void log_map_error(wgpu::MapAsyncStatus status, wgpu::StringView message) {
               static_cast<int>(message.length),
               message.data);
 }
-#endif  // defined(__EMSCRIPTEN__)
+#endif  // defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 }  // namespace
 
 sk_sp<DawnBuffer> DawnBuffer::Make(const DawnSharedContext* sharedContext,
@@ -187,7 +187,7 @@ DawnBuffer::DawnBuffer(const DawnSharedContext* sharedContext,
     fMapPtr = mappedAtCreationPtr;
 }
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 bool DawnBuffer::prepareForReturnToCache(const std::function<void()>& takeRef) {
     // This function is only useful for Emscripten where we have to pre-map the buffer
     // once it is returned to the cache.
@@ -305,7 +305,7 @@ void DawnBuffer::onMap() {
     SkASSERT(status == wgpu::WaitStatus::Success);
     SkASSERT(mapWaitInfo.completed);
 }
-#endif  // defined(__EMSCRIPTEN__)
+#endif  // defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 
 void DawnBuffer::onUnmap() {
     SkASSERT(fBuffer);

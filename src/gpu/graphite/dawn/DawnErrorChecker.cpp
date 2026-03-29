@@ -41,7 +41,7 @@ SkEnumBitMask<DawnErrorType> DawnErrorChecker::popErrorScopes() {
         return DawnErrorType::kNoError;
     }
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     struct ErrorState {
         SkEnumBitMask<DawnErrorType> fError;
         int fScopeIdx;
@@ -130,7 +130,7 @@ SkEnumBitMask<DawnErrorType> DawnErrorChecker::popErrorScopes() {
         SKGPU_LOG_E("Failed waiting for 'validation' error scope to pop.");
     }
     SkASSERT(status == wgpu::WaitStatus::Success);
-#endif  // defined(__EMSCRIPTEN__)
+#endif  // defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 
     fArmed = false;
     return errorState.fError;

@@ -15,7 +15,7 @@
 
 namespace skgpu::graphite {
 namespace {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 // GpuWorkSubmission with AsyncWait. This is useful for wasm where wgpu::Future
 // is not available yet.
 class DawnWorkSubmissionWithAsyncWait final : public GpuWorkSubmission {
@@ -95,7 +95,7 @@ void DawnWorkSubmissionWithFuture::onWaitUntilFinished(const SharedContext* shar
     SkASSERT(status == wgpu::WaitStatus::Success);
     SkASSERT(waitInfo.completed);
 }
-#endif  // defined(__EMSCRIPTEN__)
+#endif  // defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 } // namespace
 
 DawnQueueManager::DawnQueueManager(wgpu::Queue queue, const SharedContext* sharedContext)
@@ -124,7 +124,7 @@ QueueManager::OutstandingSubmission DawnQueueManager::onSubmitToGpu() {
 
     fQueue.Submit(/*commandCount=*/1, &wgpuCmdBuffer);
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     return std::make_unique<DawnWorkSubmissionWithAsyncWait>(
             std::move(fCurrentCommandBuffer), this, dawnSharedContext());
 #else
