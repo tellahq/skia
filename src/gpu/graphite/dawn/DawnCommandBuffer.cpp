@@ -24,7 +24,7 @@
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
 #include "src/gpu/graphite/dawn/DawnTexture.h"
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 #include <emscripten/version.h>
 
 namespace wgpu {
@@ -38,7 +38,7 @@ namespace skgpu::graphite {
 // On emsdk before 3.1.48 the API for RenderPass and ComputePass timestamps was different
 // and does not map to current webgpu. We check this in DawnCaps but we also must avoid
 // naming the types from the new API because they aren't defined.
-#if defined(__EMSCRIPTEN__)                                                                  \
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)                            \
         && ((__EMSCRIPTEN_major__ < 3)                                                       \
          || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ < 1)                          \
          || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ == 1 && __EMSCRIPTEN_tiny__ < 48))
@@ -345,7 +345,7 @@ bool DawnCommandBuffer::beginRenderPass(const RenderPassDesc& renderPassDesc,
 #endif
 
 #if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::RenderPassTimestampWrites wgpuTimestampWrites;
 #else
     wgpu::PassTimestampWrites wgpuTimestampWrites;
@@ -1097,7 +1097,7 @@ void DawnCommandBuffer::beginComputePass() {
     SkASSERT(!fActiveComputePassEncoder);
     wgpu::ComputePassDescriptor wgpuComputePassDescriptor = {};
 #if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ComputePassTimestampWrites wgpuTimestampWrites;
 #else
     wgpu::PassTimestampWrites wgpuTimestampWrites;

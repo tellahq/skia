@@ -615,7 +615,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = staticDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
 #else
             layout.stepMode = wgpu::VertexStepMode::Undefined;
@@ -641,7 +641,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = appendDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
 #else
             layout.stepMode = wgpu::VertexStepMode::Undefined;

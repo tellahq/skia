@@ -19,7 +19,7 @@ namespace skgpu::graphite {
 namespace {
 
 wgpu::ShaderModule CreateNoopFragment(const wgpu::Device& device) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ShaderModuleWGSLDescriptor wgslDesc;
 #else
     wgpu::ShaderSourceWGSL wgslDesc;

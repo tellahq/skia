@@ -433,7 +433,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
 #endif
 #endif // defined(__EMSCRIPTEN__)
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::SupportedLimits supportedLimits;
     // TODO(crbug.com/42241199): Update to use wgpu::Status when webgpu.h in Emscripten is updated.
     [[maybe_unused]] bool limitsSucceeded = backendContext.fDevice.GetLimits(&supportedLimits);

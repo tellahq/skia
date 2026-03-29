@@ -174,7 +174,7 @@ static bool check_shader_module([[maybe_unused]] const DawnSharedContext* shared
     Handler handler;
     handler.fShaderText = shaderText;
     handler.fErrorHandler = errorHandler;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // Deprecated function.
     module->GetCompilationInfo(&Handler::Fn, &handler);
 #else
@@ -204,7 +204,7 @@ bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
                                  const SkSL::NativeShader& wgsl,
                                  wgpu::ShaderModule* module,
                                  ShaderErrorHandler* errorHandler) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ShaderModuleWGSLDescriptor wgslDesc;
 #else
     wgpu::ShaderSourceWGSL wgslDesc;
