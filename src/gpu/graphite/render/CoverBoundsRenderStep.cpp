@@ -75,6 +75,8 @@ void CoverBoundsRenderStep::writeVertices(DrawWriter* writer,
 
     // Since the local coords always have Z=0, we can discard the 3rd row and column of the matrix.
     const SkM44& m = params.transform().matrix();
+    printf("[CoverBounds] depth=%f fDepth=%u\n",
+           params.order().depthAsFloat(), params.order().depth().bits());
     instances.append(1) << bounds << params.order().depthAsFloat() << ssboIndices
                         << m.rc(0,0) << m.rc(1,0) << m.rc(3,0)
                         << m.rc(0,1) << m.rc(1,1) << m.rc(3,1)
