@@ -1725,6 +1725,12 @@ void Device::drawGeometry(const Transform& localToDevice,
 
     // Post-draw book keeping (bounds manager, depth tracking, etc.)
     fColorDepthBoundsManager->recordDraw(clip.drawBounds(), order.paintOrder());
+    static bool printed_layout = false;
+    if (!printed_layout) {
+        printed_layout = true;
+        printf("[Device] sizeof(DrawOrder)=%zu sizeof(DrawParams)=%zu\n",
+               sizeof(DrawOrder), sizeof(DrawParams));
+    }
     printf("[Device::recordDraw] fCurrentDepth=%u -> order.depth=%u\n",
            fCurrentDepth.bits(), order.depth().bits());
     fCurrentDepth = order.depth();

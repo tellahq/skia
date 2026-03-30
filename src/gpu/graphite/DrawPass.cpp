@@ -612,9 +612,17 @@ std::unique_ptr<DrawPass> DrawPass::Make(Recorder* recorder,
         uint32_t geometrySsboIndex = useStorageBuffers ? geometryUniformTracker.ssboIndex() : 0;
         uint32_t shadingSsboIndex = useStorageBuffers ? shadingUniformTracker.ssboIndex() : 0;
         skvx::uint2 ssboIndices = {geometrySsboIndex, shadingSsboIndex};
-        printf("[DrawPass] step=%s depth=%u paintOrder=%u\n",
-               renderStep.name(), draw.drawParams().order().depth().bits(),
-               draw.drawParams().order().paintOrder().bits());
+        {
+            const auto& dp = draw.drawParams();
+            const auto& ord = dp.order();
+            printf("[DrawPass] step=%s depth=%u paintOrder=%u "
+                   "sizeof(DrawParams)=%zu sizeof(DrawOrder)=%zu "
+                   "dp=%p ord=%p diff=%td\n",
+                   renderStep.name(), ord.depth().bits(), ord.paintOrder().bits(),
+                   sizeof(dp), sizeof(ord),
+                   (const void*)&dp, (const void*)&ord,
+                   (const char*)&ord - (const char*)&dp);
+        }
         renderStep.writeVertices(&drawWriter, draw.drawParams(), ssboIndices);
 
         if (bufferMgr->hasMappingFailed()) {
