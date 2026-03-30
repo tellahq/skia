@@ -1,7 +1,7 @@
 #ifndef WASM_SJLJ_STUBS_H
 #define WASM_SJLJ_STUBS_H
 
-// Stub setjmp/longjmp for wasm32-unknown-unknown.
+// Stub setjmp/longjmp for WASM targets (wasm32-unknown-unknown, wasm32-wasi).
 //
 // Skia's PNG and JPEG codecs use setjmp/longjmp for error recovery from
 // malformed images. On WASM this normally requires exception handling
