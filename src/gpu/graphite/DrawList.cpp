@@ -37,8 +37,14 @@ void DrawList::recordDraw(const Renderer* renderer,
 
     // TODO: Add validation that the renderer's expected shape type and stroke params match provided
 
+    printf("[DrawList::record] ordering.depth=%u addr=%p\n",
+           ordering.depth().bits(), (const void*)&ordering);
     fDraws.emplace_back(renderer, this->deduplicateTransform(localToDevice), geometry, clip,
                         ordering, paint, stroke, dependsOnDst, dstReadReq);
+    // Verify the stored depth matches
+    printf("[DrawList::stored] depth=%u addr=%p\n",
+           fDraws.back().drawParams().order().depth().bits(),
+           (const void*)&fDraws.back());
 
     // Accumulate renderer information for each draw added to this list
     fRenderStepCount += renderer->numRenderSteps();
