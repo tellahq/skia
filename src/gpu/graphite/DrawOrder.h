@@ -165,6 +165,7 @@ private:
     CompressedPaintersOrder fPaintOrder;
     DisjointStencilIndex    fStencilIndex;
     PaintersDepth           fDepth;
+    uint16_t                fPadding = 0; // Pad to 8 bytes for wasm32 ABI
 };
 
 } // namespace skgpu::graphite
