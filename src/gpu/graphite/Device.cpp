@@ -1725,6 +1725,8 @@ void Device::drawGeometry(const Transform& localToDevice,
 
     // Post-draw book keeping (bounds manager, depth tracking, etc.)
     fColorDepthBoundsManager->recordDraw(clip.drawBounds(), order.paintOrder());
+    printf("[Device::recordDraw] fCurrentDepth=%u -> order.depth=%u\n",
+           fCurrentDepth.bits(), order.depth().bits());
     fCurrentDepth = order.depth();
 
     // TODO(b/238758897): When we enable layer elision that depends on draws not overlapping, we
