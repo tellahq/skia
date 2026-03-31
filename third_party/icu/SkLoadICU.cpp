@@ -13,7 +13,11 @@
 
 #include <cstdio>
 #include <cstring>
+#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 #include <mutex>
+#else
+#include "umutex.h"  // Provides no-op std::once_flag/call_once for WASM
+#endif
 #include <string>
 
 #include "unicode/udata.h"
