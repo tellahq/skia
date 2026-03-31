@@ -1,16 +1,9 @@
 /*
- * Adds a mutex implementation to harfbuzz.
- * On WASM (single-threaded), use a no-op mutex to avoid <mutex> dependency.
+ * Adds a mutex implementation based on c++ mutex to harfbuzz.
  */
-#if defined(SK_WASM32_UNKNOWN_UNKNOWN)
-struct hb_mutex_impl_t {
-    void lock() {}
-    void unlock() {}
-};
-#else
 #include <mutex>
+
 using hb_mutex_impl_t = std::mutex;
-#endif
 #define HB_MUTEX_IMPL_INIT      UNUSED
 #define hb_mutex_impl_init(M)   HB_STMT_START { new (M) hb_mutex_impl_t;  } HB_STMT_END
 #define hb_mutex_impl_lock(M)   (M)->lock ()

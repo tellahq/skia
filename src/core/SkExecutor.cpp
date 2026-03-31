@@ -12,9 +12,7 @@
 #include "src/base/SkNoDestructor.h"
 
 #include <deque>
-#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 #include <thread>
-#endif
 #include <utility>
 
 using namespace skia_private;
@@ -26,7 +24,7 @@ using namespace skia_private;
         GetNativeSystemInfo(&sysinfo);
         return (int)sysinfo.dwNumberOfProcessors;
     }
-#elif !defined(SK_WASM32_UNKNOWN_UNKNOWN)
+#else
     #include <unistd.h>
     static int num_cores() {
         return (int)sysconf(_SC_NPROCESSORS_ONLN);
@@ -60,7 +58,6 @@ void SkExecutor::SetDefault(SkExecutor* executor) {
     gDefaultExecutor = executor;
 }
 
-#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 // We'll always push_back() new work, but pop from the front of deques or the back of SkTArray.
 static inline std::function<void(void)> pop(std::deque<std::function<void(void)>>* list) {
     std::function<void(void)> fn = std::move(list->front());
@@ -145,23 +142,14 @@ private:
     SkSemaphore           fWorkAvailable;
     bool                  fAllowBorrowing;
 };
-#endif // !SK_WASM32_UNKNOWN_UNKNOWN
 
 std::unique_ptr<SkExecutor> SkExecutor::MakeFIFOThreadPool(int threads, bool allowBorrowing) {
-#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     using WorkList = std::deque<std::function<void(void)>>;
     return std::make_unique<SkThreadPool<WorkList>>(threads > 0 ? threads : num_cores(),
                                                     allowBorrowing);
-#else
-    return nullptr;
-#endif
 }
 std::unique_ptr<SkExecutor> SkExecutor::MakeLIFOThreadPool(int threads, bool allowBorrowing) {
-#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     using WorkList = TArray<std::function<void(void)>>;
     return std::make_unique<SkThreadPool<WorkList>>(threads > 0 ? threads : num_cores(),
                                                     allowBorrowing);
-#else
-    return nullptr;
-#endif
 }
