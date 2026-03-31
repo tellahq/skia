@@ -203,8 +203,6 @@ void CoverageMaskRenderStep::writeVertices(DrawWriter* dw,
     maskBounds = 65535.f * maskBounds + 0.5f;
 
     const SkM44& m = coverageMask.deviceToLocal();
-    printf("[CoverageMask] depth=%f fDepth=%u\n",
-           params.order().depthAsFloat(), params.order().depth().bits());
     instances.append(1) << drawBounds << skvx::cast<uint16_t>(maskBounds) << deviceOrigin
                         << params.order().depthAsFloat() << ssboIndices
                         << m.rc(0,0) << m.rc(1,0) << m.rc(3,0)   // mat0
