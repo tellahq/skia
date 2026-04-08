@@ -49,7 +49,7 @@ struct ContextOptions;
  */
 using DawnTickFunction = void(const wgpu::Instance& device);
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 SK_API inline void DawnNativeProcessEventsFunction(const wgpu::Instance& instance) {
     instance.ProcessEvents();
 }
@@ -64,7 +64,7 @@ struct SK_API DawnBackendContext {
     wgpu::Queue fQueue;
     // See comment on DawnTickFunction.
     DawnTickFunction* fTick =
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(SK_WASM32_UNKNOWN_UNKNOWN)
             nullptr;
 #else
             DawnNativeProcessEventsFunction;

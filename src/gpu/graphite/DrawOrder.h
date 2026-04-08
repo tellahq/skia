@@ -167,6 +167,12 @@ private:
     CompressedPaintersOrder fPaintOrder;
     DisjointStencilIndex    fStencilIndex;
     PaintersDepth           fDepth;
+#if defined(__wasm__)
+    // Pad to 8 bytes for wasm32 ABI correctness. Without this, the 6-byte
+    // struct's last field (fDepth) gets corrupted when passed by value through
+    // function calls on wasm32 (wasi-sdk clang).
+    uint16_t                fPadding = 0;
+#endif
 };
 
 } // namespace skgpu::graphite

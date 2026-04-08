@@ -88,7 +88,7 @@ sk_sp<DawnSampler> DawnSampler::Make(const DawnSharedContext* sharedContext,
     desc.maxAnisotropy = 1;
     desc.compare       = wgpu::CompareFunction::Undefined;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::YCbCrVkDescriptor ycbcrDescriptor;
     if (samplerDesc.isImmutable()) {
         ycbcrDescriptor =
@@ -106,7 +106,7 @@ sk_sp<DawnSampler> DawnSampler::Make(const DawnSharedContext* sharedContext,
         label.append("Y").append(tileModeLabels[static_cast<int>(samplerDesc.tileModeY())]);
         label.append(minMagFilterLabels[static_cast<int>(samplingOptions.filter)]);
         label.append(mipFilterLabels[static_cast<int>(samplingOptions.mipmap)]);
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         if (DawnDescriptorIsValid(ycbcrDescriptor)) {
             label.append("YCbCr");
 

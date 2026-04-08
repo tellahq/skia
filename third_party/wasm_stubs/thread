@@ -1,0 +1,37 @@
+// Stub <thread> for single-threaded WASM. Compiles but traps on thread creation.
+#pragma once
+#include <functional>
+
+namespace std {
+
+class thread {
+public:
+    class id {
+    public:
+        id() noexcept = default;
+        friend bool operator==(id a, id b) noexcept { return true; }
+        friend bool operator!=(id a, id b) noexcept { return false; }
+    };
+
+    thread() noexcept = default;
+
+    template<class F, class... Args>
+    explicit thread(F&&, Args&&...) { __builtin_trap(); }
+
+    thread(thread&&) noexcept = default;
+    thread& operator=(thread&&) noexcept = default;
+    thread(const thread&) = delete;
+    thread& operator=(const thread&) = delete;
+
+    bool joinable() const noexcept { return false; }
+    void join() {}
+    void detach() {}
+    id get_id() const noexcept { return id(); }
+    static unsigned hardware_concurrency() noexcept { return 1; }
+};
+
+namespace this_thread {
+    inline thread::id get_id() noexcept { return thread::id(); }
+}
+
+} // namespace std

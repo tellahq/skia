@@ -1,0 +1,24 @@
+// Stub <condition_variable> for single-threaded WASM. No-op (no threads to signal).
+#pragma once
+#include "mutex"
+
+namespace std {
+
+class condition_variable {
+public:
+    condition_variable() = default;
+    ~condition_variable() = default;
+    condition_variable(const condition_variable&) = delete;
+    condition_variable& operator=(const condition_variable&) = delete;
+
+    void notify_one() noexcept {}
+    void notify_all() noexcept {}
+
+    template<class Lock>
+    void wait(Lock&) {}
+
+    template<class Lock, class Pred>
+    void wait(Lock&, Pred p) { while (!p()) {} }
+};
+
+} // namespace std

@@ -33,7 +33,7 @@ namespace {
 constexpr uint32_t kBufferBindingSizeAlignment = 16;
 
 wgpu::ShaderModule create_shader_module(const wgpu::Device& device, const char* source) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ShaderModuleWGSLDescriptor wgslDesc;
 #else
     wgpu::ShaderSourceWGSL wgslDesc;
@@ -523,7 +523,7 @@ sk_sp<DawnTexture> DawnResourceProvider::findOrCreateDiscardableMSAALoadTexture(
     dawnMsaaLoadTextureInfo.fSampleCount = SampleCount::k1;
     dawnMsaaLoadTextureInfo.fUsage |= wgpu::TextureUsage::TextureBinding;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // MSAA texture can be transient attachment (memoryless) but the load texture cannot be.
     // This is because the load texture will need to have its content retained between two passes
     // loading:

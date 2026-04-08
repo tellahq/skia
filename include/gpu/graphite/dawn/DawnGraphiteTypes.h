@@ -32,7 +32,7 @@ public:
     wgpu::TextureAspect fAspect = wgpu::TextureAspect::All;
     uint32_t fSlice = 0;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // The descriptor of the YCbCr info (if any) for this texture. Dawn's YCbCr
     // sampling will be used for this texture if this info is set. Setting the
     // info is supported only on Android and only if using Vulkan as the
@@ -75,7 +75,7 @@ public:
             , fAspect(aspect)
             , fSlice(slice) {}
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     DawnTextureInfo(SampleCount sampleCount,
                     Mipmapped mipmapped,
                     wgpu::TextureFormat format,
