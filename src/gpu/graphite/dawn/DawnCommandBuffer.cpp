@@ -24,7 +24,7 @@
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
 #include "src/gpu/graphite/dawn/DawnTexture.h"
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 #include <emscripten/version.h>
 
 namespace wgpu {
@@ -38,7 +38,7 @@ namespace skgpu::graphite {
 // On emsdk before 3.1.48 the API for RenderPass and ComputePass timestamps was different
 // and does not map to current webgpu. We check this in DawnCaps but we also must avoid
 // naming the types from the new API because they aren't defined.
-#if defined(__EMSCRIPTEN__)                                                                  \
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)                            \
         && ((__EMSCRIPTEN_major__ < 3)                                                       \
          || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ < 1)                          \
          || (__EMSCRIPTEN_major__ == 3 && __EMSCRIPTEN_minor__ == 1 && __EMSCRIPTEN_tiny__ < 48))
@@ -350,13 +350,13 @@ bool DawnCommandBuffer::beginRenderPass(const RenderPassDesc& renderPassDesc,
     wgpu::RenderPassDepthStencilAttachment wgpuDepthStencilAttachment;
 
     // Set up color attachment.
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::DawnRenderPassSampleCount mssaRenderToSingleSampledDesc;
     wgpu::RenderPassDescriptorResolveRect wgpuPartialRect = {};
 #endif
 
 #if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::RenderPassTimestampWrites wgpuTimestampWrites;
 #else
     wgpu::PassTimestampWrites wgpuTimestampWrites;
@@ -429,7 +429,7 @@ bool DawnCommandBuffer::beginRenderPass(const RenderPassDesc& renderPassDesc,
             }
 
             if (!emulateLoadStoreResolveTexture) {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
                 if (fSharedContext->dawnCaps()->supportsPartialLoadResolve()) {
                     SkIRect msaaArea = renderPassBounds;
                     SkAssertResult(msaaArea.intersect(SkIRect::MakeSize(
@@ -460,7 +460,7 @@ bool DawnCommandBuffer::beginRenderPass(const RenderPassDesc& renderPassDesc,
             [[maybe_unused]] bool isMSAAToSingleSampled =
                     renderPassDesc.fSampleCount > SampleCount::k1 &&
                     colorTexture->sampleCount() == SampleCount::k1;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(SK_WASM32_UNKNOWN_UNKNOWN)
             SkASSERT(!isMSAAToSingleSampled);
 #else
             if (isMSAAToSingleSampled) {
@@ -862,7 +862,7 @@ void DawnCommandBuffer::bindTextureAndSamplers(
     // If possible, it's ideal to optimize for the common case of using a single texture with one
     // dynamic sampler. When using only one sampler, determine whether it is static or dynamic.
     bool usingSingleStaticSampler = false;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     if (command.fNumTexSamplers == 1) {
         const wgpu::YCbCrVkDescriptor& ycbcrDesc =
                 TextureInfoPriv::Get<DawnTextureInfo>(
@@ -890,7 +890,7 @@ void DawnCommandBuffer::bindTextureAndSamplers(
             auto& wgpuTextureView = texture->sampleTextureView();
             auto& wgpuSampler = sampler->dawnSampler();
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             // Assuming shader generator assigns binding slot to sampler then texture,
             // then the next sampler and texture, and so on, we need to use
             // 2 * i as base binding index of the sampler and texture.
@@ -908,7 +908,7 @@ void DawnCommandBuffer::bindTextureAndSamplers(
                 samplerEntry.binding = 2 * i;
                 samplerEntry.sampler = wgpuSampler;
                 entries.push_back(samplerEntry);
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             }
 #endif
             wgpu::BindGroupEntry textureEntry;
@@ -1005,7 +1005,7 @@ bool DawnCommandBuffer::updateIntrinsicUniformsAsUBO(UniformDataBlock uniformDat
 }
 
 bool DawnCommandBuffer::updateIntrinsicUniformsAsPushConstant(UniformDataBlock uniformData) {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     SkASSERT(fActiveRenderPassEncoder);
     SkASSERT(uniformData.size() <= DawnGraphicsPipeline::kIntrinsicUniformSize);
     fActiveRenderPassEncoder.SetImmediates(0, uniformData.data(), uniformData.size());
@@ -1106,7 +1106,7 @@ void DawnCommandBuffer::beginComputePass() {
     SkASSERT(!fActiveComputePassEncoder);
     wgpu::ComputePassDescriptor wgpuComputePassDescriptor = {};
 #if WGPU_TIMESTAMP_WRITES_DEFINED
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ComputePassTimestampWrites wgpuTimestampWrites;
 #else
     wgpu::PassTimestampWrites wgpuTimestampWrites;

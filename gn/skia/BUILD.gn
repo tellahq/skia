@@ -782,10 +782,15 @@ if (is_wasm) {
     }
   } else {
     config("wasm") {
-      common = [ "-pthread" ]
+      common = []
       if (skia_emsdk_dir != "") {
-        # rust-skia: third_party emsdk is not guaranteed; keep sysroot optional.
-        common += [ "--sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot" ]
+        # rust-skia: -pthread and the emsdk sysroot come from Emscripten.
+        # Non-Emscripten WASM builds (e.g. wasm32-unknown-unknown via wasi-sdk)
+        # don't have threads and must not receive -pthread.
+        common += [
+          "-pthread",
+          "--sysroot=$skia_emsdk_dir/upstream/emscripten/cache/sysroot",
+        ]
       }
       cflags = common
       ldflags = common

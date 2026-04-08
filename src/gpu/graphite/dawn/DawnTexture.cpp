@@ -44,7 +44,7 @@ wgpu::Texture DawnTexture::MakeDawnTexture(const DawnSharedContext* sharedContex
         return {};
     }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // If a non-default YCbCr descriptor is provided, either the vkFormat or the externalFormat must
     // be defined.
     if (DawnDescriptorIsValid(dawnInfo.fYcbcrVkDescriptor) &&
@@ -80,7 +80,7 @@ wgpu::Texture DawnTexture::MakeDawnTexture(const DawnSharedContext* sharedContex
 }
 
 static bool has_transient_usage(const TextureInfo& info) {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     const auto& dawnInfo = TextureInfoPriv::Get<DawnTextureInfo>(info);
     return dawnInfo.fUsage & wgpu::TextureUsage::TransientAttachment;
 #else
@@ -120,7 +120,7 @@ std::pair<wgpu::TextureView, wgpu::TextureView> DawnTexture::CreateTextureViews(
         viewDesc.dimension = wgpu::TextureViewDimension::e2D;
         viewDesc.baseArrayLayer = dawnInfo.fSlice;
         viewDesc.arrayLayerCount = 1;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         // Ensure that the TextureView is configured to use YCbCr sampling if the Texture is
         // doing so.
         const wgpu::YCbCrVkDescriptor& ycbcrDesc = dawnInfo.fYcbcrVkDescriptor;

@@ -25,7 +25,7 @@ DawnTextureInfo::DawnTextureInfo(WGPUTexture texture)
                 /*slice=*/0) {}
 
 TextureFormat DawnTextureInfo::viewFormat() const {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     if (fYcbcrVkDescriptor.externalFormat != 0) {
         return TextureFormat::kExternal;
     }
@@ -48,7 +48,7 @@ bool DawnTextureInfo::isCompatible(const TextureInfo& that, bool requireExact) c
     // YCbCrInfo must be equal. The aspect should either match the plane aspect or should be All.
     return this->getViewFormat() == dt.getViewFormat() &&
             (fUsage & dt.fUsage) == fUsage &&
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             DawnDescriptorsAreEquivalent(fYcbcrVkDescriptor, dt.fYcbcrVkDescriptor) &&
 #endif
             (fAspect == dt.fAspect || (!requireExact && fAspect == wgpu::TextureAspect::All));

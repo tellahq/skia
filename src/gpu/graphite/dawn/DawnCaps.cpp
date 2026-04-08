@@ -48,14 +48,14 @@ skgpu::UniqueKey::Domain get_pipeline_domain() {
 static constexpr wgpu::TextureFormat kFormats[] = {
         wgpu::TextureFormat::RGBA8Unorm,
         wgpu::TextureFormat::R8Unorm,
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         wgpu::TextureFormat::R16Unorm,
 #endif
         wgpu::TextureFormat::BGRA8Unorm,
         wgpu::TextureFormat::RGBA16Float,
         wgpu::TextureFormat::R16Float,
         wgpu::TextureFormat::RG8Unorm,
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         wgpu::TextureFormat::RG16Unorm,
         wgpu::TextureFormat::RGBA16Unorm,
 #endif
@@ -82,10 +82,12 @@ static constexpr wgpu::TextureFormat kFormats[] = {
         wgpu::TextureFormat::ETC2RGBA8Unorm,
         wgpu::TextureFormat::ETC2RGBA8UnormSrgb,
 
+#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         wgpu::TextureFormat::R8BG8Biplanar420Unorm,
         wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm,
+#endif
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         wgpu::TextureFormat::OpaqueYCbCrAndroid,
 #endif
 
@@ -93,7 +95,7 @@ static constexpr wgpu::TextureFormat kFormats[] = {
 };
 
 bool is_valid_view(const DawnTextureInfo& dawnInfo) {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     switch (dawnInfo.fFormat) {
         case wgpu::TextureFormat::R8BG8Biplanar420Unorm:
             if (dawnInfo.fAspect == wgpu::TextureAspect::Plane0Only) {
@@ -276,7 +278,7 @@ TextureInfo DawnCaps::onGetDefaultTextureInfo(SkEnumBitMask<TextureUsage> usage,
 
 SkISize DawnCaps::getDepthAttachmentDimensions(const TextureInfo& textureInfo,
                                                const SkISize colorAttachmentDimensions) const {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // For multiplanar textures, texture->textureInfo() uses the format of planes instead of
     // textures (R8, R8G8, vs R8BG8Biplanar420Unorm), so we have to query texture format from
     // wgpu::Texture object, and then use it reconstruct the full dimensions.
@@ -316,7 +318,7 @@ SkSpan<const Caps::ColorTypeInfo> DawnCaps::getColorTypeInfos(
 void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextOptions& options) {
     // GetAdapter() is not available in WASM and there's no way to get AdapterInfo off of
     // the WGPUDevice directly.
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::AdapterInfo info;
     backendContext.fDevice.GetAdapter().GetInfo(&info);
 
@@ -325,7 +327,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
 #endif
 #endif // defined(__EMSCRIPTEN__)
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::SupportedLimits supportedLimits;
     // TODO(crbug.com/42241199): Update to use wgpu::Status when webgpu.h in Emscripten is updated.
     [[maybe_unused]] bool limitsSucceeded = backendContext.fDevice.GetLimits(&supportedLimits);
@@ -334,10 +336,14 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
 #else
     wgpu::CompatibilityModeLimits compatLimits;
     wgpu::Limits limits{.nextInChain = &compatLimits};
+#if !defined(SK_WASM32_UNKNOWN_UNKNOWN)
+    // DawnTexelCopyBufferRowAlignmentLimits is a Dawn-native extension not
+    // exposed via the emdawnwebgpu headers used by non-Emscripten WASM builds.
     wgpu::DawnTexelCopyBufferRowAlignmentLimits alignmentLimits{};
     if (backendContext.fDevice.HasFeature(wgpu::FeatureName::DawnTexelCopyBufferRowAlignment)) {
         compatLimits.nextInChain = &alignmentLimits;
     }
+#endif  // !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     [[maybe_unused]] wgpu::Status status = backendContext.fDevice.GetLimits(&limits);
     SkASSERT(status == wgpu::Status::Success);
 #endif  // defined(__EMSCRIPTEN__)
@@ -352,7 +358,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
 
     // Dawn requires 256 bytes per row alignment for buffer texture copies.
     fTextureDataRowBytesAlignment = 256;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // If the device supports the DawnTexelCopyBufferRowAlignment feature, the alignment can be
     // queried from its limits.
     if (backendContext.fDevice.HasFeature(wgpu::FeatureName::DawnTexelCopyBufferRowAlignment)) {
@@ -371,7 +377,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
                                                                        : Layout::kStd430;
     fResourceBindingReqs.fSeparateTextureAndSamplerBinding = true;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // We need 32 bytes push constant for 2 vectors worth of intrinsic data.
     fResourceBindingReqs.fUsePushConstantsForIntrinsicConstants =
             limits.maxImmediateSize >= DawnGraphicsPipeline::kIntrinsicUniformSize;
@@ -386,7 +392,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
             DawnGraphicsPipeline::kCombinedUniformIndex;
     fResourceBindingReqs.fGradientBufferBinding = DawnGraphicsPipeline::kGradientBufferIndex;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // We need at least 4 SSBOs for intrinsic, render step, paint & gradient buffers.
     // TODO(b/418235681): Enable SSBOs after fixing performance regressions for Dawn/Vulkan.
     fStorageBufferSupport = info.backendType != wgpu::BackendType::OpenGL &&
@@ -415,7 +421,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
     fDrawBufferCanBeMappedForReadback = false;
 #endif
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     fDrawBufferCanBeMapped =
             backendContext.fDevice.HasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
 
@@ -427,7 +433,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
     }
 #endif
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     if (backendContext.fDevice.HasFeature(wgpu::FeatureName::DawnLoadResolveTexture)) {
         fSupportedResolveTextureLoadOp = wgpu::LoadOp::ExpandResolveTexture;
         fSupportsPartialLoadResolve =
@@ -455,7 +461,7 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
     if (backendContext.fDevice.HasFeature(wgpu::FeatureName::TimestampQuery)) {
         // Native Dawn has an API for writing timestamps on command buffers. WebGPU only supports
         // begin and end timestamps on render and compute passes.
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         // TODO(b/42240559): On Apple silicon, the timer queries don't have the correct dependencies
         // to measure all the encoders that the start/end commands encapsulate in the commandbuffer.
         // We would prefer to keep this API as it lets us measure our texture uploads. If either
@@ -504,7 +510,7 @@ void DawnCaps::initShaderCaps(const wgpu::Device& device) {
     if (device.HasFeature(wgpu::FeatureName::DualSourceBlending)) {
         shaderCaps->fDualSourceBlendingSupport = true;
     }
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     if (device.HasFeature(wgpu::FeatureName::FramebufferFetch)) {
         shaderCaps->fFBFetchSupport = true;
     }
@@ -582,7 +588,7 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         }
     }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     const bool supportUnorm16 = device.HasFeature(wgpu::FeatureName::Unorm16TextureFormats);
     // TODO(crbug.com/dawn/1856): Support storage binding for compute shader in Dawn.
     // Format: R16Unorm
@@ -712,7 +718,7 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         }
     }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // TODO(crbug.com/dawn/1856): Support storage binding for compute shader in Dawn.
     // Format: RG16Unorm
     {
@@ -960,7 +966,7 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
         info->fColorTypeInfoCount = 0;
     }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // Format: External
     {
         info = &fFormatTable[GetFormatIndex(wgpu::TextureFormat::OpaqueYCbCrAndroid)];
@@ -985,7 +991,11 @@ void DawnCaps::initFormatTable(const wgpu::Device& device) {
 
 // static
 size_t DawnCaps::GetFormatIndex(wgpu::TextureFormat format) {
-    for (size_t i = 0; i < std::size(kFormats); ++i) {
+    // Use sizeof/sizeof instead of std::size because libc++ on wasi-sdk
+    // appears to trip over std::size's template substitution for our
+    // conditional-initializer array.
+    constexpr size_t kNumFormats = sizeof(kFormats) / sizeof(kFormats[0]);
+    for (size_t i = 0; i < kNumFormats; ++i) {
         if (format == kFormats[i]) {
             return i;
         }
@@ -1148,7 +1158,7 @@ UniqueKey DawnCaps::makeComputePipelineKey(const ComputePipelineDesc& pipelineDe
 }
 
 ImmutableSamplerInfo DawnCaps::getImmutableSamplerInfo(const TextureInfo& textureInfo) const {
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     const wgpu::YCbCrVkDescriptor& ycbcrConversionInfo =
             TextureInfoPriv::Get<DawnTextureInfo>(textureInfo).fYcbcrVkDescriptor;
 
@@ -1161,7 +1171,7 @@ ImmutableSamplerInfo DawnCaps::getImmutableSamplerInfo(const TextureInfo& textur
     return {};
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 static constexpr const char* filter_mode_to_str(wgpu::FilterMode mode) {
     switch (mode) {
         case wgpu::FilterMode::Undefined: return "undefined";
@@ -1208,7 +1218,7 @@ static constexpr char swizzle_to_str(uint32_t c, char identityAnswer) {
 #endif
 
 std::string DawnCaps::toString(const ImmutableSamplerInfo& immutableSamplerInfo) const {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(SK_WASM32_UNKNOWN_UNKNOWN)
     return "";
 #else
     const wgpu::YCbCrVkDescriptor info =
@@ -1269,7 +1279,7 @@ void DawnCaps::buildKeyForTexture(SkISize dimensions,
     // We need two uint32_ts for dimensions, 1 for format, and 1 for the rest of the key;
     int num32DataCnt = 2 + 1 + 1;
     bool hasYcbcrInfo = false;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // If we are using ycbcr texture/sampling, more key information is needed.
     if ((hasYcbcrInfo = DawnDescriptorIsValid(dawnInfo.fYcbcrVkDescriptor))) {
         num32DataCnt += 3; // non-format flags and 64-bit format
@@ -1284,7 +1294,7 @@ void DawnCaps::buildKeyForTexture(SkISize dimensions,
                  (static_cast<uint32_t>(isMipped)              << 3) |
                  (static_cast<uint32_t>(dawnInfo.fUsage)       << 4);
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     if (hasYcbcrInfo) {
         ImmutableSamplerInfo packedInfo =
                 DawnDescriptorToImmutableSamplerInfo(dawnInfo.fYcbcrVkDescriptor);

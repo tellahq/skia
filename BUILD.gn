@@ -897,7 +897,14 @@ optional("gpu_shared") {
 
   if (skia_use_dawn) {
     public_defines += [ "SK_DAWN" ]
-    public_deps += [ "//third_party/dawn" ]
+    # On WASM (skia_use_webgpu=true) Skia's Graphite Dawn backend talks to
+    # the browser's WebGPU via emdawnwebgpu — no native Dawn build is
+    # needed. Skip //third_party/dawn entirely so Skia's in-tree CMake
+    # Dawn build doesn't run (it requires third_party/externals/dawn which
+    # isn't present in rust-skia checkouts).
+    if (!skia_use_webgpu) {
+      public_deps += [ "//third_party/dawn" ]
+    }
   }
 
   if (skia_use_direct3d) {
@@ -2088,7 +2095,7 @@ skia_source_set("public_headers_warnings_check") {
     "modules/skshaper",
   ]
 
-  if (skia_use_dawn) {
+  if (skia_use_dawn && !skia_use_webgpu) {
     deps += [ "//third_party/dawn" ]
   }
 }
@@ -2116,7 +2123,7 @@ if (((skia_enable_fontmgr_fontconfig && skia_use_freetype) ||
       ":skia",
       ":skia.h",
     ]
-    if (skia_use_dawn) {
+    if (skia_use_dawn && !skia_use_webgpu) {
       deps += [ "//third_party/dawn" ]
     }
   }
@@ -2332,7 +2339,7 @@ if (skia_enable_tools) {
         all_dependent_configs += [ ":vulkan_memory_allocator" ]
       }
 
-      if (skia_use_dawn) {
+      if (skia_use_dawn && !skia_use_webgpu) {
         public_deps += [ "//third_party/dawn" ]
         if (is_clang) {
           cflags_cc = [ "-Wno-microsoft-cast" ]

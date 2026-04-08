@@ -9,7 +9,15 @@
 
 #include "include/private/base/SkFeatures.h" // IWYU pragma: keep
 
-#if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
+#if defined(SK_WASM32_UNKNOWN_UNKNOWN)
+    // Single-threaded WASM: OS semaphore is never needed (the fast path in
+    // SkSemaphore::signal/wait always succeeds). Trap if called — indicates
+    // a logic error where contention would occur on a single thread.
+    struct SkSemaphore::OSSemaphore {
+        void signal(int) { __builtin_trap(); }
+        void wait()      { __builtin_trap(); }
+    };
+#elif defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
     #include <dispatch/dispatch.h>
 
     struct SkSemaphore::OSSemaphore {

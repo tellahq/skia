@@ -94,7 +94,7 @@ SkTextureCompressionType DawnFormatToCompressionType(wgpu::TextureFormat format)
         M(TextureFormat::kD24_S8,         wgpu::TextureFormat::Depth24PlusStencil8)         \
         M(TextureFormat::kD32F_S8,        wgpu::TextureFormat::Depth32FloatStencil8)        \
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 #define DAWN_FORMAT_MAPPING_NATIVE_ONLY(M) \
         M(TextureFormat::kR16,            wgpu::TextureFormat::R16Unorm)                    \
         M(TextureFormat::kRG16,           wgpu::TextureFormat::RG16Unorm)                   \
@@ -175,7 +175,7 @@ static bool check_shader_module([[maybe_unused]] const DawnSharedContext* shared
     Handler handler;
     handler.fShaderText = shaderText;
     handler.fErrorHandler = errorHandler;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     // Deprecated function.
     module->GetCompilationInfo(&Handler::Fn, &handler);
 #else
@@ -205,7 +205,7 @@ bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
                                  const SkSL::NativeShader& wgsl,
                                  wgpu::ShaderModule* module,
                                  ShaderErrorHandler* errorHandler) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     wgpu::ShaderModuleWGSLDescriptor wgslDesc;
 #else
     wgpu::ShaderSourceWGSL wgslDesc;
@@ -223,7 +223,7 @@ bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
     return check_shader_module(sharedContext, module, wgsl.fText.c_str(), errorHandler);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 
 namespace {
 

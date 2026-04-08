@@ -65,7 +65,7 @@ bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
                                  wgpu::ShaderModule* module,
                                  ShaderErrorHandler*);
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
 
 bool DawnDescriptorIsValid(const wgpu::YCbCrVkDescriptor&);
 

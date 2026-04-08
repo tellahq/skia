@@ -354,7 +354,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
     UniquePaintParamsID paintID = pipelineDesc.paintParamsID();
 
     skia_private::TArray<SamplerDesc>* samplerDescArrPtr = nullptr;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     skia_private::TArray<SamplerDesc> samplerDescArr {};
     samplerDescArrPtr = &samplerDescArr;
 #endif
@@ -430,7 +430,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
     colorTarget.writeMask = blendInfo.fWritesColor && hasFragmentSkSL ? wgpu::ColorWriteMask::All
                                                                       : wgpu::ColorWriteMask::None;
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
     const bool loadMsaaFromResolve =
             renderPassDesc.fColorResolveAttachment.fFormat != TextureFormat::kUnsupported &&
             renderPassDesc.fColorResolveAttachment.fLoadOp == LoadOp::kLoad;
@@ -500,7 +500,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
                 groupLayouts[1] = sharedContext->getSingleTextureSamplerBindGroupLayout();
             } else {
                 std::vector<wgpu::BindGroupLayoutEntry> entries(numTexturesAndSamplers);
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
                 // Static sampler layouts are passed into Dawn by address and therefore must stay
                 // alive until the BindGroupLayoutDescriptor is created. So, store them outside of
                 // the loop that iterates over each BindGroupLayoutEntry.
@@ -518,7 +518,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
                 for (int i = 0; i < numTexturesAndSamplers;) {
                     entries[i].binding = i;
                     entries[i].visibility = wgpu::ShaderStage::Fragment;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
                     // Index of sampler information = 1/2 of cumulative texture and sampler index.
                     // If we have a non-default-initialized SamplerDesc at that index,
                     // fetch an immutable sampler that matches that description to include in the
@@ -548,7 +548,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
                     } else {
 #endif
                         entries[i].sampler.type = wgpu::SamplerBindingType::Filtering;
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
                     }
 #endif
                     ++i;
@@ -581,7 +581,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
         layoutDesc.bindGroupLayoutCount =
             hasFragmentSamplers ? groupLayouts.size() : groupLayouts.size() - 1;
         layoutDesc.bindGroupLayouts = groupLayouts.data();
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         if (sharedContext->caps()
                     ->resourceBindingRequirements()
                     .fUsePushConstantsForIntrinsicConstants) {
@@ -611,7 +611,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = staticDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
 #else
             layout.stepMode = wgpu::VertexStepMode::Undefined;
@@ -637,7 +637,7 @@ sk_sp<DawnGraphicsPipeline> DawnGraphicsPipeline::Make(
             layout.attributes = appendDataAttributes.data();
         } else {
             layout.arrayStride = 0;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
             layout.stepMode = wgpu::VertexStepMode::VertexBufferNotUsed;
 #else
             layout.stepMode = wgpu::VertexStepMode::Undefined;
