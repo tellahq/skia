@@ -26,6 +26,9 @@ class SkiaBuilder:
     def __init__(self, args):
         self.args = args
         self.host_system = platform.system().lower()
+        self.target_os = args.target_os or self.host_system
+        self.target_cpu = args.target_cpu
+        self.is_wasm = self.target_os == "emscripten"
         self.build_dir = Path(args.build_dir)
         self.src_dir = Path(args.src_dir)
         self.target = args.target
@@ -97,7 +100,13 @@ class SkiaBuilder:
         """Build GN arguments based on features and configuration."""
         gn_args = []
 
-        if self.args.compiler == "clang":
+        extra_cflags = []
+        extra_cflags_cc = []
+
+        if self.is_wasm:
+            cc = "emcc"
+            cxx = "em++"
+        elif self.args.compiler == "clang":
             cc = "clang"
             cxx = "clang++"
         elif self.args.compiler == "gcc":
@@ -118,32 +127,37 @@ class SkiaBuilder:
         gn_args.append(f'cxx="{cxx}"')
 
         # Set target OS and architecture
-        target_cpu = platform.machine()
-        if target_cpu == "aarch64":
-            target_cpu = "arm64"
-        elif target_cpu == "x86_64" or target_cpu == "AMD64":
-            target_cpu = "x64"
-        elif target_cpu == "i686" or target_cpu == "i386":
-            target_cpu = "x86"
-        elif target_cpu == "riscv64gc":
-            target_cpu = "riscv64"
+        if self.is_wasm:
+            # target_cpu="wasm" triggers target_os="wasm" in Skia's BUILDCONFIG.gn
+            gn_args.append('target_cpu="wasm"')
 
-        if self.host_system == "darwin":
-            gn_args.append('target_os="mac"')
-            gn_args.append(f'target_cpu="{target_cpu}"')
-        elif self.host_system == "linux":
-            gn_args.append('target_os="linux"')
-            gn_args.append(f'target_cpu="{target_cpu}"')
-        elif self.host_system == "windows":
-            gn_args.append('target_os="win"')
-            gn_args.append(f'target_cpu="{target_cpu}"')
+            # Emscripten-specific flags
+            extra_cflags.extend([
+                '"-pthread"',
+                '"-msimd128"',
+                '"-fPIC"',
+            ])
+        else:
+            target_cpu = self.target_cpu or platform.machine()
+            if target_cpu == "aarch64":
+                target_cpu = "arm64"
+            elif target_cpu == "x86_64" or target_cpu == "AMD64":
+                target_cpu = "x64"
+            elif target_cpu == "i686" or target_cpu == "i386":
+                target_cpu = "x86"
+            elif target_cpu == "riscv64gc":
+                target_cpu = "riscv64"
 
-        # Add extra_cflags if needed (deployment target defines for macOS)
-        extra_cflags = []
-        extra_cflags_cc = []
+            if self.target_os == "darwin":
+                gn_args.append('target_os="mac"')
+            elif self.target_os == "linux":
+                gn_args.append('target_os="linux"')
+            elif self.target_os == "windows":
+                gn_args.append('target_os="win"')
+            gn_args.append(f'target_cpu="{target_cpu}"')
 
         # Add macOS deployment target defines and C++ include path if set
-        if self.host_system == "darwin":
+        if self.target_os == "darwin":
             # Get CPPFLAGS from environment if set (for C++ include paths)
             cppflags = os.environ.get("CPPFLAGS", "")
             if cppflags:
@@ -172,36 +186,48 @@ class SkiaBuilder:
             f"skia_enable_svg={'true' if 'svg' in self.features else 'false'}"
         )
         gn_args.append(
-            f"skia_enable_pdf={'true' if 'pdf' in self.features else 'false'}"
+            f"skia_enable_pdf={'true' if 'pdf' in self.features and not self.is_wasm else 'false'}"
         )
 
         # GPU backends
         has_gpu = any(f in self.features for f in ["gl", "vulkan", "metal", "d3d"])
         gn_args.append(f"skia_enable_ganesh={str(has_gpu).lower()}")
-        gn_args.append(f"skia_use_gl={'true' if 'gl' in self.features else 'false'}")
-        gn_args.append(f"skia_use_egl={'true' if 'egl' in self.features else 'false'}")
-        gn_args.append(f"skia_use_x11={'true' if 'x11' in self.features else 'false'}")
 
-        if "vulkan" in self.features:
+        if self.is_wasm:
+            # WASM uses WebGL via emscripten's GL emulation
+            gn_args.append(f"skia_use_gl={'true' if 'gl' in self.features else 'false'}")
+            gn_args.append(f"skia_use_webgl={'true' if 'gl' in self.features else 'false'}")
+            gn_args.append("skia_use_egl=false")
+            gn_args.append("skia_use_x11=false")
+        else:
+            gn_args.append(f"skia_use_gl={'true' if 'gl' in self.features else 'false'}")
+            gn_args.append(f"skia_use_egl={'true' if 'egl' in self.features else 'false'}")
+            gn_args.append(f"skia_use_x11={'true' if 'x11' in self.features else 'false'}")
+
+        if "vulkan" in self.features and not self.is_wasm:
             gn_args.append("skia_use_vulkan=true")
             gn_args.append("skia_enable_spirv_validation=false")
 
-        if "metal" in self.features:
+        if "metal" in self.features and not self.is_wasm:
             gn_args.append("skia_use_metal=true")
 
-        if "d3d" in self.features:
+        if "d3d" in self.features and not self.is_wasm:
             gn_args.append("skia_use_direct3d=true")
 
         # Text layout
         if "textlayout" in self.features:
             gn_args.append("skia_enable_skshaper=true")
             gn_args.append("skia_use_icu=true")
-            gn_args.append(f"skia_use_system_icu={str(self.use_system_libs).lower()}")
+            if self.is_wasm:
+                gn_args.append("skia_use_system_icu=false")
+                gn_args.append("skia_use_system_harfbuzz=false")
+            else:
+                gn_args.append(f"skia_use_system_icu={str(self.use_system_libs).lower()}")
+                gn_args.append(
+                    f"skia_use_system_harfbuzz={str(self.use_system_libs).lower()}"
+                )
             gn_args.append("skia_use_harfbuzz=true")
             gn_args.append("skia_pdf_subset_harfbuzz=true")
-            gn_args.append(
-                f"skia_use_system_harfbuzz={str(self.use_system_libs).lower()}"
-            )
             gn_args.append("skia_enable_skparagraph=true")
         else:
             gn_args.append("skia_use_icu=false")
@@ -209,26 +235,42 @@ class SkiaBuilder:
 
         # WebP support
         if "webp-encode" in self.features or "webp-decode" in self.features:
-            gn_args.append(
-                f"skia_use_system_libwebp={str(self.use_system_libs).lower()}"
-            )
+            if self.is_wasm:
+                gn_args.append("skia_use_system_libwebp=false")
+            else:
+                gn_args.append(
+                    f"skia_use_system_libwebp={str(self.use_system_libs).lower()}"
+                )
         gn_args.append(
-            f"skia_use_libwebp_encode={'true' if 'webp-encode' in self.features else 'false'}"
+            f"skia_use_libwebp_encode={'true' if 'webp-encode' in self.features and not self.is_wasm else 'false'}"
         )
         gn_args.append(
             f"skia_use_libwebp_decode={'true' if 'webp-decode' in self.features else 'false'}"
         )
 
         # System libraries
-        gn_args.append(f"skia_use_system_libpng={str(self.use_system_libs).lower()}")
-        gn_args.append(f"skia_use_system_zlib={str(self.use_system_libs).lower()}")
-        gn_args.append(
-            f"skia_use_system_libjpeg_turbo={str(self.use_system_libs).lower()}"
-        )
+        if self.is_wasm:
+            # WASM uses all bundled libraries
+            gn_args.append("skia_use_system_libpng=false")
+            gn_args.append("skia_use_system_zlib=false")
+            gn_args.append("skia_use_system_libjpeg_turbo=false")
+        else:
+            gn_args.append(f"skia_use_system_libpng={str(self.use_system_libs).lower()}")
+            gn_args.append(f"skia_use_system_zlib={str(self.use_system_libs).lower()}")
+            gn_args.append(
+                f"skia_use_system_libjpeg_turbo={str(self.use_system_libs).lower()}"
+            )
 
-        # FreeType (Linux/Unix)
-        if self.host_system in ["linux", "freebsd", "openbsd"]:
-            use_freetype = True
+        # FreeType
+        if self.is_wasm:
+            # WASM builds freetype from source (needed for font rendering)
+            gn_args.append("skia_use_freetype=true")
+            gn_args.append("skia_use_system_freetype2=false")
+            gn_args.append("skia_use_fontconfig=false")
+            gn_args.append("skia_enable_fontmgr_custom_directory=false")
+            gn_args.append("skia_enable_fontmgr_custom_embedded=true")
+            gn_args.append("skia_enable_fontmgr_custom_empty=true")
+        elif self.host_system in ["linux", "freebsd", "openbsd"]:
             gn_args.append("skia_use_freetype=true")
             if "embed-freetype" in self.features:
                 gn_args.append("skia_use_system_freetype2=false")
@@ -236,7 +278,6 @@ class SkiaBuilder:
                 gn_args.append(
                     f"skia_use_system_freetype2={str(not self.use_system_libs).lower()}"
                 )
-                # Add system freetype include path to extra_cflags list
                 extra_cflags.append('"-I/usr/include/freetype2"')
 
             if "freetype-woff2" in self.features:
@@ -248,8 +289,15 @@ class SkiaBuilder:
         gn_args.append("skia_enable_skottie=false")
         gn_args.append("skia_use_xps=false")
         gn_args.append("skia_use_dng_sdk=false")
-        gn_args.append("skia_use_expat=true")
-        gn_args.append(f"skia_use_system_expat={str(self.use_system_libs).lower()}")
+        if self.is_wasm:
+            gn_args.append("skia_use_expat=false")
+            gn_args.append("skia_use_piex=false")
+            gn_args.append("skia_use_libheif=false")
+            gn_args.append("skia_use_lua=false")
+            gn_args.append("skia_use_wuffs=true")
+        else:
+            gn_args.append("skia_use_expat=true")
+            gn_args.append(f"skia_use_system_expat={str(self.use_system_libs).lower()}")
 
         # Debug-specific settings
         if self.is_debug:
@@ -640,6 +688,16 @@ def main():
     parser.add_argument("--depfile", type=Path, help="Output depfile for Meson")
     parser.add_argument("--version")
     parser.add_argument("--offline", action="store_true", help="Skip dependency sync")
+    parser.add_argument(
+        "--target-os",
+        default=None,
+        help="Target OS for cross-compilation (e.g., emscripten)",
+    )
+    parser.add_argument(
+        "--target-cpu",
+        default=None,
+        help="Target CPU for cross-compilation (e.g., wasm32)",
+    )
     parser.add_argument(
         "--configure-only",
         action="store_true",

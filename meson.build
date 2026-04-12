@@ -6,12 +6,19 @@ project('skia',
 
 fs = import('fs')
 host_system = host_machine.system()
+is_emscripten = host_system == 'emscripten'
 
 # Determine build target
 if get_option('debug')
   target = 'debug'
 else
   target = 'release'
+endif
+
+# Cross-compilation args for gn_wrapper
+cross_args = []
+if is_emscripten
+  cross_args += ['--target-os', 'emscripten', '--target-cpu', 'wasm32']
 endif
 
 # Find required tools
@@ -35,6 +42,7 @@ elif host_system == 'darwin'
   ext_static = 'a'
   ext_shared = 'dylib'
 else
+  # Linux, Emscripten, and others
   ext_static = 'a'
   ext_shared = 'so'
 endif
@@ -171,7 +179,7 @@ if build_static
     '--library-type', 'static',
     '--version', meson.project_version(),
     '--configure-only',
-  ]
+  ] + cross_args
 
   if features.length() > 0
     configure_cmd_static += ['--features'] + features
@@ -213,7 +221,7 @@ if build_static
     '--version', meson.project_version(),
     '--build-only',
     '--depfile', '@DEPFILE@',
-  ]
+  ] + cross_args
 
   if features.length() > 0
     wrapper_cmd_static += ['--features'] + features
@@ -250,7 +258,7 @@ if build_shared
     '--library-type', 'shared',
     '--version', meson.project_version(),
     '--configure-only',
-  ]
+  ] + cross_args
 
   if features.length() > 0
     configure_cmd_shared += ['--features'] + features
@@ -292,7 +300,7 @@ if build_shared
     '--version', meson.project_version(),
     '--build-only',
     '--depfile', '@DEPFILE@',
-  ]
+  ] + cross_args
 
   if features.length() > 0
     wrapper_cmd_shared += ['--features'] + features
@@ -350,7 +358,10 @@ endif
 # Collect system dependencies based on platform and features
 skia_deps = []
 
-if host_system == 'linux'
+if is_emscripten
+  # Emscripten provides GL (WebGL) and threading via its SDK.
+  # All other libraries are built from source by Skia's GN build.
+elif host_system == 'linux'
   thread_dep = dependency('threads')
   skia_deps += [thread_dep]
 
