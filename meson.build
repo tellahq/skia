@@ -421,10 +421,10 @@ pkg_uninstalled_variables = {
 }
 
 # Use defines from whichever build type was configured
-# Prefer static if both were built
-defines_map = shared_defines_map
+# Prefer static defines if available, fall back to shared
+defines_map = static_defines_map
 if defines_map == {} and shared_defines_map != {}
-  defines_map = static_defines_map
+  defines_map = shared_defines_map
 endif
 
 # Define all libraries and their metadata
