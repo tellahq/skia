@@ -4391,11 +4391,7 @@ bool GrGLGpu::testSync(GrGLsync sync) {
         case GrGLCaps::FenceType::kSyncObject: {
             constexpr GrGLbitfield kFlags = 0;
             GrGLenum result;
-#if defined(__EMSCRIPTEN__)
-            GL_CALL_RET(result, ClientWaitSync(sync, kFlags, 0, 0));
-#else
             GL_CALL_RET(result, ClientWaitSync(sync, kFlags, 0));
-#endif
             return (GR_GL_CONDITION_SATISFIED == result || GR_GL_ALREADY_SIGNALED == result);
         }
     }
@@ -4443,13 +4439,7 @@ void GrGLGpu::waitSemaphore(GrSemaphore* semaphore) {
     SkASSERT(semaphore);
     GrGLSemaphore* glSem = static_cast<GrGLSemaphore*>(semaphore);
 
-#if defined(__EMSCRIPTEN__)
-    constexpr auto kLo = SkTo<GrGLuint>(GR_GL_TIMEOUT_IGNORED & 0xFFFFFFFFull);
-    constexpr auto kHi = SkTo<GrGLuint>(GR_GL_TIMEOUT_IGNORED >> 32);
-    GL_CALL(WaitSync(glSem->sync(), 0, kLo, kHi));
-#else
     GL_CALL(WaitSync(glSem->sync(), 0, GR_GL_TIMEOUT_IGNORED));
-#endif
 }
 
 std::optional<GrTimerQuery> GrGLGpu::startTimerQuery() {
