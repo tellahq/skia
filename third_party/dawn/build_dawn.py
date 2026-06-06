@@ -240,6 +240,19 @@ def main():
   with open(dawn_command_buffer_vk, "w", encoding="utf-8") as f:
     f.write(dawn_command_buffer_vk_contents)
 
+  dawn_shader_module_vk = os.path.join(dawn_dir, "src", "dawn", "native",
+                                       "vulkan", "ShaderModuleVk.cpp")
+  with open(dawn_shader_module_vk, "r", encoding="utf-8") as f:
+    dawn_shader_module_vk_contents = f.read()
+  dawn_shader_module_vk_contents = dawn_shader_module_vk_contents.replace(
+      "tint::BindingPoint(0, 1)",
+      "tint::BindingPoint{.group = 0, .binding = 1}")
+  dawn_shader_module_vk_contents = dawn_shader_module_vk_contents.replace(
+      "tint::BindingPoint(0, 0)",
+      "tint::BindingPoint{.group = 0, .binding = 0}")
+  with open(dawn_shader_module_vk, "w", encoding="utf-8") as f:
+    f.write(dawn_shader_module_vk_contents)
+
   dawn_queue = os.path.join(dawn_dir, "src", "dawn", "native", "Queue.cpp")
   with open(dawn_queue, "r", encoding="utf-8") as f:
     dawn_queue_contents = f.read()
