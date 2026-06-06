@@ -198,6 +198,22 @@ def main():
   with open(tint_multiplanar, "w", encoding="utf-8") as f:
     f.write(tint_multiplanar_contents)
 
+  dawn_mutex_protected = os.path.join(dawn_dir, "src", "dawn", "common",
+                                      "MutexProtected.h")
+  with open(dawn_mutex_protected, "r", encoding="utf-8") as f:
+    dawn_mutex_protected_contents = f.read()
+  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
+      "Guard(T* obj, Traits::LockType&& lock, class Defer* defer = nullptr)",
+      "Guard(T* obj, typename Traits::LockType&& lock, class Defer* defer = nullptr)")
+  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
+      "CondVarGuard(T* obj, Traits::MutexType& mutex, std::condition_variable* cv)",
+      "CondVarGuard(T* obj, typename Traits::MutexType& mutex, std::condition_variable* cv)")
+  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
+      "mutable Traits::MutexType mMutex;",
+      "mutable typename Traits::MutexType mMutex;")
+  with open(dawn_mutex_protected, "w", encoding="utf-8") as f:
+    f.write(dawn_mutex_protected_contents)
+
   absl_options = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
                               "options.h")
   with open(absl_options, "r", encoding="utf-8") as f:
