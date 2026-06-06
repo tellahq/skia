@@ -104,6 +104,7 @@ def main():
       "-DTINT_ENABLE_INSTALL=OFF",
       f"-DDAWN_ENABLE_D3D11={gn_bool_to_cmake(args.dawn_enable_d3d11)}",
       f"-DDAWN_ENABLE_D3D12={gn_bool_to_cmake(args.dawn_enable_d3d12)}",
+      "-DDAWN_ENABLE_DESKTOP_GL=OFF",
       f"-DDAWN_ENABLE_OPENGLES={gn_bool_to_cmake(args.dawn_enable_opengles)}",
       f"-DDAWN_ENABLE_METAL={gn_bool_to_cmake(args.dawn_enable_metal)}",
       f"-DDAWN_ENABLE_VULKAN={gn_bool_to_cmake(args.dawn_enable_vulkan)}",
@@ -213,6 +214,21 @@ def main():
       "mutable typename Traits::MutexType mMutex;")
   with open(dawn_mutex_protected, "w", encoding="utf-8") as f:
     f.write(dawn_mutex_protected_contents)
+
+  dawn_tint_utils = os.path.join(dawn_dir, "src", "dawn", "native",
+                                 "TintUtils.h")
+  with open(dawn_tint_utils, "r", encoding="utf-8") as f:
+    dawn_tint_utils_contents = f.read()
+  dawn_tint_utils_contents = dawn_tint_utils_contents.replace(
+      "for (const auto& [bindingNumber, apiBindingIndex] : bgl->GetBindingMap()) {\n"
+      "            if (!(bgl->GetAPIBindingInfo(apiBindingIndex).visibility & StageBit(stage))) {",
+      "for (const auto& bindingEntry : bgl->GetBindingMap()) {\n"
+      "            const auto& bindingNumber = bindingEntry.first;\n"
+      "            const auto& apiBindingIndex = bindingEntry.second;\n"
+      "\n"
+      "            if (!(bgl->GetAPIBindingInfo(apiBindingIndex).visibility & StageBit(stage))) {")
+  with open(dawn_tint_utils, "w", encoding="utf-8") as f:
+    f.write(dawn_tint_utils_contents)
 
   dawn_queue = os.path.join(dawn_dir, "src", "dawn", "native", "Queue.cpp")
   with open(dawn_queue, "r", encoding="utf-8") as f:
