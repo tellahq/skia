@@ -230,6 +230,16 @@ def main():
   with open(dawn_tint_utils, "w", encoding="utf-8") as f:
     f.write(dawn_tint_utils_contents)
 
+  dawn_command_buffer_vk = os.path.join(dawn_dir, "src", "dawn", "native",
+                                        "vulkan", "CommandBufferVk.cpp")
+  with open(dawn_command_buffer_vk, "r", encoding="utf-8") as f:
+    dawn_command_buffer_vk_contents = f.read()
+  dawn_command_buffer_vk_contents = dawn_command_buffer_vk_contents.replace(
+      "using PipelineSpecialization = Pipeline::Specialization;",
+      "using PipelineSpecialization = typename Pipeline::Specialization;")
+  with open(dawn_command_buffer_vk, "w", encoding="utf-8") as f:
+    f.write(dawn_command_buffer_vk_contents)
+
   dawn_queue = os.path.join(dawn_dir, "src", "dawn", "native", "Queue.cpp")
   with open(dawn_queue, "r", encoding="utf-8") as f:
     dawn_queue_contents = f.read()
