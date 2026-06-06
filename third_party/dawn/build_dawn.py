@@ -181,6 +181,23 @@ def main():
   with open(tint_vector, "w", encoding="utf-8") as f:
     f.write(tint_vector_contents)
 
+  tint_multiplanar = os.path.join(dawn_dir, "src", "tint", "lang", "core",
+                                  "ir", "transform",
+                                  "multiplanar_external_texture.cc")
+  with open(tint_multiplanar, "r", encoding="utf-8") as f:
+    tint_multiplanar_contents = f.read()
+  tint_multiplanar_contents = tint_multiplanar_contents.replace(
+      "struct overloaded : Ts... {\n"
+      "    using Ts::operator()...;\n"
+      "};\n",
+      "struct overloaded : Ts... {\n"
+      "    using Ts::operator()...;\n"
+      "};\n"
+      "template <class... Ts>\n"
+      "overloaded(Ts...) -> overloaded<Ts...>;\n")
+  with open(tint_multiplanar, "w", encoding="utf-8") as f:
+    f.write(tint_multiplanar_contents)
+
   absl_options = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
                               "options.h")
   with open(absl_options, "r", encoding="utf-8") as f:
