@@ -214,6 +214,68 @@ def main():
   with open(dawn_mutex_protected, "w", encoding="utf-8") as f:
     f.write(dawn_mutex_protected_contents)
 
+  dawn_queue = os.path.join(dawn_dir, "src", "dawn", "native", "Queue.cpp")
+  with open(dawn_queue, "r", encoding="utf-8") as f:
+    dawn_queue_contents = f.read()
+  dawn_queue_contents = dawn_queue_contents.replace(
+      "for (auto [j, texture] : Enumerate(scope.textures)) {\n"
+      "                    if (!texture->HasPinnedUsage()) {\n"
+      "                        continue;\n"
+      "                    }\n"
+      "\n"
+      "                    DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
+      "                        [&](const SubresourceRange&, const TextureSyncInfo& info) -> MaybeError {\n"
+      "                            DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
+      "                                            \"%s is used as %s while pinned to %s.\", texture,\n"
+      "                                            info.usage, texture->GetPinnedUsage());\n"
+      "                            return {};\n"
+      "                        }));\n"
+      "                }",
+      "for (auto [j, texturePtr] : Enumerate(scope.textures)) {\n"
+      "                    if (!texturePtr->HasPinnedUsage()) {\n"
+      "                        continue;\n"
+      "                    }\n"
+      "\n"
+      "                    DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
+      "                        [&](const SubresourceRange&, const TextureSyncInfo& info) -> MaybeError {\n"
+      "                            DAWN_INVALID_IF(info.usage != texturePtr->GetPinnedUsage(),\n"
+      "                                            \"%s is used as %s while pinned to %s.\", texturePtr,\n"
+      "                                            info.usage, texturePtr->GetPinnedUsage());\n"
+      "                            return {};\n"
+      "                        }));\n"
+      "                }")
+  dawn_queue_contents = dawn_queue_contents.replace(
+      "for (auto [j, texture] : Enumerate(scope.textures)) {\n"
+      "                        if (!texture->HasPinnedUsage()) {\n"
+      "                            continue;\n"
+      "                        }\n"
+      "\n"
+      "                        DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
+      "                            [&](const SubresourceRange&,\n"
+      "                                const TextureSyncInfo& info) -> MaybeError {\n"
+      "                                DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
+      "                                                \"%s is used as %s while pinned to %s.\", texture,\n"
+      "                                                info.usage, texture->GetPinnedUsage());\n"
+      "                                return {};\n"
+      "                            }));\n"
+      "                    }",
+      "for (auto [j, texturePtr] : Enumerate(scope.textures)) {\n"
+      "                        if (!texturePtr->HasPinnedUsage()) {\n"
+      "                            continue;\n"
+      "                        }\n"
+      "\n"
+      "                        DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
+      "                            [&](const SubresourceRange&,\n"
+      "                                const TextureSyncInfo& info) -> MaybeError {\n"
+      "                                DAWN_INVALID_IF(info.usage != texturePtr->GetPinnedUsage(),\n"
+      "                                                \"%s is used as %s while pinned to %s.\", texturePtr,\n"
+      "                                                info.usage, texturePtr->GetPinnedUsage());\n"
+      "                                return {};\n"
+      "                            }));\n"
+      "                    }")
+  with open(dawn_queue, "w", encoding="utf-8") as f:
+    f.write(dawn_queue_contents)
+
   absl_options = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
                               "options.h")
   with open(absl_options, "r", encoding="utf-8") as f:
