@@ -167,6 +167,40 @@ def main():
   print("with environment", env)
   subprocess.run(configure_cmd, check=True, env=env)
 
+  # Dawn/Tint currently fails under Linux clang with -pedantic-errors unless
+  # this dependent type is explicitly marked as a typename.
+  tint_vector = os.path.join(dawn_dir, "src", "tint", "utils", "containers",
+                             "vector.h")
+  with open(tint_vector, "r", encoding="utf-8") as f:
+    tint_vector_contents = f.read()
+  tint_vector_contents = tint_vector_contents.replace(
+      "using VectorCommonType =\n"
+      "    tint::internal::VectorCommonType<IsCastable<std::remove_pointer_t<Ts>...>, Ts...>::type;",
+      "using VectorCommonType =\n"
+      "    typename tint::internal::VectorCommonType<IsCastable<std::remove_pointer_t<Ts>...>, Ts...>::type;")
+  with open(tint_vector, "w", encoding="utf-8") as f:
+    f.write(tint_vector_contents)
+
+  absl_options = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
+                              "options.h")
+  with open(absl_options, "r", encoding="utf-8") as f:
+    absl_options_contents = f.read()
+  absl_options_contents = absl_options_contents.replace(
+      "#define ABSL_OPTION_USE_STD_SOURCE_LOCATION 2",
+      "#define ABSL_OPTION_USE_STD_SOURCE_LOCATION 0")
+  with open(absl_options, "w", encoding="utf-8") as f:
+    f.write(absl_options_contents)
+
+  absl_config = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
+                             "config.h")
+  with open(absl_config, "r", encoding="utf-8") as f:
+    absl_config_contents = f.read()
+  absl_config_contents = absl_config_contents.replace(
+      "#define ABSL_HAVE_STD_SOURCE_LOCATION 1",
+      "#undef ABSL_HAVE_STD_SOURCE_LOCATION")
+  with open(absl_config, "w", encoding="utf-8") as f:
+    f.write(absl_config_contents)
+
   build_cmd = [ninja_exe, "-C", build_dir, "-dkeepdepfile"] + build_targets
   subprocess.run(build_cmd, check=True, env=env)
 
