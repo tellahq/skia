@@ -187,15 +187,16 @@ def main():
                                   "multiplanar_external_texture.cc")
   with open(tint_multiplanar, "r", encoding="utf-8") as f:
     tint_multiplanar_contents = f.read()
-  tint_multiplanar_contents = tint_multiplanar_contents.replace(
-      "struct overloaded : Ts... {\n"
-      "    using Ts::operator()...;\n"
-      "};\n",
-      "struct overloaded : Ts... {\n"
-      "    using Ts::operator()...;\n"
-      "};\n"
-      "template <class... Ts>\n"
-      "overloaded(Ts...) -> overloaded<Ts...>;\n")
+  if "overloaded(Ts...) -> overloaded<Ts...>;" not in tint_multiplanar_contents:
+    tint_multiplanar_contents = tint_multiplanar_contents.replace(
+        "struct overloaded : Ts... {\n"
+        "    using Ts::operator()...;\n"
+        "};\n",
+        "struct overloaded : Ts... {\n"
+        "    using Ts::operator()...;\n"
+        "};\n"
+        "template <class... Ts>\n"
+        "overloaded(Ts...) -> overloaded<Ts...>;\n")
   with open(tint_multiplanar, "w", encoding="utf-8") as f:
     f.write(tint_multiplanar_contents)
 
