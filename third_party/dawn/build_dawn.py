@@ -338,6 +338,104 @@ def main():
   with open(absl_config, "w", encoding="utf-8") as f:
     f.write(absl_config_contents)
 
+  # Tella: opt-out of per-texture export semaphores for SharedTextureMemory.
+  #
+  # On every submit that uses an imported (SharedTextureMemory) texture, the
+  # Vulkan backend creates an exportable binary semaphore for that texture,
+  # exports it as an fd after the submit and destroys it once the submit
+  # completes (dawn:1745). That is ~3 driver calls per texture per submit;
+  # a compositor that shares several textures per frame with CUDA spends most
+  # of its kernel-driver time on them, and that driver time serializes every
+  # process on the GPU. Embedders that synchronize with the importing API on
+  # their own (e.g. a queue-wide timeline semaphore signaled from
+  # wgpuQueueOnSubmittedWorkDone) never wait on these fences.
+  #
+  # DawnVulkanSetSharedTextureExternalSync(true) makes submits still record
+  # the queue-family release barrier but skip the semaphore, and makes
+  # EndAccess return no fence. Off by default: unchanged behavior.
+  tella_marker = "TellaSharedTextureExternalSync"
+
+  def tella_patch(path, replacements):
+    with open(path, "r", encoding="utf-8") as f:
+      contents = f.read()
+    if tella_marker in contents:
+      return
+    for old, new in replacements:
+      if contents.count(old) != 1:
+        raise RuntimeError(
+            f"Tella Dawn patch anchor not found exactly once in {path}:\n{old}")
+      contents = contents.replace(old, new)
+    with open(path, "w", encoding="utf-8") as f:
+      f.write(contents)
+
+  tella_patch(
+      os.path.join(dawn_dir, "src", "dawn", "native", "vulkan", "TextureVk.cpp"),
+      [
+          ("#include <iostream>\n",
+           "#include <atomic>\n#include <iostream>\n"),
+          ("MaybeError ImportedTextureBase::EndAccess(",
+           "namespace {\n"
+           "std::atomic<bool> gTellaSharedTextureExternalSync{false};\n"
+           "bool TellaSharedTextureExternalSync() {\n"
+           "    return gTellaSharedTextureExternalSync.load(std::memory_order_relaxed);\n"
+           "}\n"
+           "}  // namespace\n"
+           "\n"
+           "extern \"C\" void DawnVulkanSetSharedTextureExternalSync(bool enabled) {\n"
+           "    gTellaSharedTextureExternalSync.store(enabled, std::memory_order_relaxed);\n"
+           "}\n"
+           "\n"
+           "MaybeError ImportedTextureBase::EndAccess("),
+          ("    // Release the texture\n"
+           "    mExternalState = ExternalState::Released;\n",
+           "    const bool eagerlyTransitioned =\n"
+           "        mExternalState == ExternalState::EagerlyTransitioned;\n"
+           "    // Release the texture\n"
+           "    mExternalState = ExternalState::Released;\n"),
+          ("    if (mExternalSemaphoreHandle == kNullExternalSemaphoreHandle || targetLayout != currentLayout) {\n",
+           "    // With external sync there is no semaphore to wait for: a submit is\n"
+           "    // only needed to record the queue release if no submit has yet.\n"
+           "    const bool needsReleaseSubmit =\n"
+           "        TellaSharedTextureExternalSync()\n"
+           "            ? !eagerlyTransitioned\n"
+           "            : mExternalSemaphoreHandle == kNullExternalSemaphoreHandle;\n"
+           "    if (needsReleaseSubmit || targetLayout != currentLayout) {\n"),
+          ("    DAWN_ASSERT(mExternalSemaphoreHandle != kNullExternalSemaphoreHandle);\n\n"
+           "    // Write out the layouts and signal semaphore\n",
+           "    DAWN_ASSERT(TellaSharedTextureExternalSync() ||\n"
+           "                mExternalSemaphoreHandle != kNullExternalSemaphoreHandle);\n\n"
+           "    // Write out the layouts and signal semaphore\n"),
+          ("    TransitionEagerlyForExport(context);\n\n",
+           "    TransitionEagerlyForExport(context);\n"
+           "    if (TellaSharedTextureExternalSync()) {\n"
+           "        return {};\n"
+           "    }\n\n"),
+          ("MaybeError ImportedTextureBase::OnAfterSubmit() {\n"
+           "    Device* device = ToBackend(GetDevice());\n",
+           "MaybeError ImportedTextureBase::OnAfterSubmit() {\n"
+           "    Device* device = ToBackend(GetDevice());\n"
+           "    if (mPendingSemaphore == VK_NULL_HANDLE) {\n"
+           "        // OnBeforeSubmit skipped the semaphore (TellaSharedTextureExternalSync).\n"
+           "        return {};\n"
+           "    }\n"),
+      ])
+
+  tella_patch(
+      os.path.join(dawn_dir, "src", "dawn", "native", "vulkan",
+                   "SharedTextureMemoryVk.cpp"),
+      [
+          ("    Ref<SharedFence> fence;\n\n#if DAWN_PLATFORM_IS(FUCHSIA)\n"
+           "    SharedFenceVkSemaphoreZirconHandleDescriptor desc;\n",
+           "    Ref<SharedFence> fence;\n\n"
+           "    // TellaSharedTextureExternalSync: the texture exported no semaphore.\n"
+           "    if (!handle.IsValid()) {\n"
+           "        ToBackend(texture)->NotifySwapChainPresent();\n"
+           "        return FenceAndSignalValue{nullptr, 0};\n"
+           "    }\n\n"
+           "#if DAWN_PLATFORM_IS(FUCHSIA)\n"
+           "    SharedFenceVkSemaphoreZirconHandleDescriptor desc;\n"),
+      ])
+
   build_cmd = [ninja_exe, "-C", build_dir, "-dkeepdepfile"] + build_targets
   subprocess.run(build_cmd, check=True, env=env)
 
