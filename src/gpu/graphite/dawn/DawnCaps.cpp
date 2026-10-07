@@ -442,7 +442,17 @@ void DawnCaps::initCaps(const DawnBackendContext& backendContext, const ContextO
     }
 #endif
 
-    if (!fSupportsPartialLoadResolve &&
+    // In the browser (wasm32-unknown-unknown) neither feature ever exists, and emulation costs
+    // more than it saves: an approx-fit MSAA texture can't resolve into the target in the same
+    // pass (WebGPU requires equal sizes), so every MSAA pass stores all samples and resolves with
+    // an extra full-screen draw. Instead use a target-sized MSAA attachment that is resolved in
+    // the pass and discarded. DawnCommandBuffer still loads a kept target with a draw.
+#if defined(SK_WASM32_UNKNOWN_UNKNOWN)
+    constexpr bool kEmulateWhenUnsupported = false;
+#else
+    constexpr bool kEmulateWhenUnsupported = true;
+#endif
+    if (kEmulateWhenUnsupported && !fSupportsPartialLoadResolve &&
         fSupportedTransientAttachmentUsage == wgpu::TextureUsage::None) {
         // If the device doesn't support partial resolve nor transient attachments, we will emulate
         // load/resolve using separate render passes. This helps reuse MSAA textures better to
