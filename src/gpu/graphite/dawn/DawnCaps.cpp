@@ -262,6 +262,15 @@ TextureInfo DawnCaps::onGetDefaultTextureInfo(SkEnumBitMask<TextureUsage> usage,
             // this usage even if higher-up Graphite logic wasn't expecting to sample it.
             dawnUsage |= wgpu::TextureUsage::TextureBinding;
         }
+#if defined(SK_WASM32_UNKNOWN_UNKNOWN)
+        // WebGPU has no load op for a resolve target, so a pass that keeps the target's contents
+        // still emulates the load and resolve (DawnCommandBuffer), and that resolve samples the
+        // MSAA attachment. Without this usage the whole command buffer fails validation and the
+        // frame is dropped. Passes that clear keep the in-pass resolve.
+        else if (sampleCount > SampleCount::k1 && !TextureFormatIsDepthOrStencil(format)) {
+            dawnUsage |= wgpu::TextureUsage::TextureBinding;
+        }
+#endif
     }
     // NOTE: kMSRTSS is ignored since it's implicitly available on any wgpu::Texture if the
     // extension is available. kHostCopy should not be requested from Caps since it's unsupported.
