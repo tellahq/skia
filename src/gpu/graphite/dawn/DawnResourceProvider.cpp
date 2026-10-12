@@ -33,6 +33,7 @@ namespace {
 constexpr uint32_t kBufferBindingSizeAlignment = 16;
 constexpr int kMaxNumberOfCachedBufferBindGroups = 1024;
 constexpr int kMaxNumberOfCachedTextureBindGroups = 4096;
+constexpr int kMaxNumberOfCachedMultiTextureBindGroups = 1024;
 
 wgpu::ShaderModule create_shader_module(const wgpu::Device& device, const char* source) {
 #if defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
@@ -435,6 +436,7 @@ DawnResourceProvider::DawnResourceProvider(SharedContext* sharedContext,
         : ResourceProvider(sharedContext, singleOwner, recorderID, resourceBudget)
         , fUniformBufferBindGroupCache(kMaxNumberOfCachedBufferBindGroups)
         , fSingleTextureSamplerBindGroups(kMaxNumberOfCachedTextureBindGroups)
+        , fTextureBindGroups(kMaxNumberOfCachedMultiTextureBindGroups)
         , fSingleOwner(singleOwner) {
     fIntrinsicConstantsManager = std::make_unique<IntrinsicConstantsManager>(this);
 
@@ -750,11 +752,32 @@ void DawnResourceProvider::onFreeGpuResources() {
     // when the DawnTexture and DawnBuffer is destroyed, but removing the bind groups themselves
     // helps reduce CPU memory periodically.
     fSingleTextureSamplerBindGroups.reset();
+    fTextureBindGroups.reset();
     fUniformBufferBindGroupCache.reset();
 }
 
 void DawnResourceProvider::onPurgeResourcesNotUsedSince(StdSteadyClock::time_point purgeTime) {
     fIntrinsicConstantsManager->purgeResourcesNotUsedSince(purgeTime);
+}
+
+const wgpu::BindGroup& DawnResourceProvider::findOrCreateTextureBindGroup(
+        const wgpu::BindGroupLayout& layout,
+        std::vector<uint32_t> ids,
+        const std::vector<wgpu::BindGroupEntry>& entries) {
+    SKGPU_ASSERT_SINGLE_OWNER(fSingleOwner)
+
+    TextureBindGroupKey key{std::move(ids)};
+    if (auto* existing = fTextureBindGroups.find(key)) {
+        return *existing;
+    }
+
+    wgpu::BindGroupDescriptor desc;
+    desc.layout = layout;
+    desc.entryCount = entries.size();
+    desc.entries = entries.data();
+
+    auto bindGroup = this->dawnSharedContext()->device().CreateBindGroup(&desc);
+    return *fTextureBindGroups.insert(std::move(key), bindGroup);
 }
 
 BindBufferInfo DawnResourceProvider::findOrCreateIntrinsicBindBufferInfo(
