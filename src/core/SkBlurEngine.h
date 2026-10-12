@@ -159,6 +159,12 @@ private:
                                      const SkIRect& srcRect,
                                      SkTileMode tileMode,
                                      const SkIRect& dstRect) const;
+    sk_sp<SkSpecialImage> evalLinearBlur2D(SkSize sigma,
+                                           SkISize radii,
+                                           sk_sp<SkSpecialImage> input,
+                                           const SkIRect& srcRect,
+                                           SkTileMode tileMode,
+                                           const SkIRect& dstRect) const;
     sk_sp<SkSpecialImage> evalBlur1D(float sigma,
                                      int radius,
                                      SkV2 dir,
@@ -187,11 +193,13 @@ public:
     // if a 2D blur is performed.
     static constexpr int kMaxSamples = 28;
 
-    // TODO(b/297393474): Update max linear sigma to 9; it had been 4 when a full 1D kernel was
-    // used, but never updated after the linear filtering optimization reduced the number of
-    // sample() calls required. Keep it at 4 for now to better isolate performance changes due to
-    // switching to a runtime effect and constant loop structure.
-    static constexpr float kMaxLinearSigma = 4.f; // -> radius = 27 -> linear kernel width = 28
+    // Max linear sigma was 4 when a full 1D kernel was used, and was never raised after the linear
+    // filtering optimization reduced the number of sample() calls (b/297393474). Sigmas up to 9
+    // now blur at full resolution instead of adding downscale passes.
+    static constexpr float kMaxLinearSigma = 9.f; // -> radius = 27 -> linear kernel width = 28
+    // Blurs whose linear kernels are at most this wide on both axes run as one 2D pass
+    // (sigma <= 5).
+    static constexpr int kMaxLinear2DWidth = 16;
     // NOTE: There is no defined kMaxBlurSigma for direct 2D blurs since it is entirely dependent on
     // the ratio between the two axes' sigmas, but generally it will be small on the order of a
     // 5x5 kernel.
