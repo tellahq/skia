@@ -63,7 +63,12 @@ bool CanUseHardwareBlending(const Caps* caps,
         // approximate the output as min(D+f*S, 1) with a slight degradation in AA quality.
         //
         // If access to D doesn't require a texture copy, prefer shader blending for the quality.
-        (bm == SkBlendMode::kPlus && (dstIsFast || !TextureFormatAutoClamps(targetFormat))) ||
+        //
+        // Tella: on floating point targets without fast dst reads, add in hardware without the
+        // clamp. Weighted sums (motion-blur exposures, crossfades) stay within [0,1], and a
+        // texture copy plus a split render pass per draw costs far more than the clamp is worth.
+        (bm == SkBlendMode::kPlus && (dstIsFast || !(TextureFormatAutoClamps(targetFormat) ||
+                                                     TextureFormatIsFloatingPoint(targetFormat)))) ||
 
         // Using an advanced blend mode but the hardware does not support them
         (bm > SkBlendMode::kLastCoeffMode && !caps->supportsHardwareAdvancedBlending()) ||
