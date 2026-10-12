@@ -10,6 +10,7 @@
 
 #include "include/core/SkSpan.h"
 #include "include/gpu/graphite/dawn/DawnGraphiteTypes.h"
+#include "src/core/SkChecksum.h"
 #include "src/core/SkLRUCache.h"
 #include "src/core/SkTHash.h"
 #include "src/gpu/graphite/PipelineData.h"
@@ -75,6 +76,12 @@ public:
     wgpu::BindGroup findOrCreateSingleTextureSamplerBindGroup(const DawnSampler*,
                                                               const DawnTexture*);
 
+    // Find or create a bind group for a pipeline's texture group. `ids` identifies the pipeline
+    // and every sampler and texture in `entries`, which are only read on a miss.
+    const wgpu::BindGroup& findOrCreateTextureBindGroup(const wgpu::BindGroupLayout& layout,
+                                                        std::vector<uint32_t> ids,
+                                                        const std::vector<wgpu::BindGroupEntry>&);
+
     // Find the cached bind buffer info, or create a new one for the given intrinsic values.
     BindBufferInfo findOrCreateIntrinsicBindBufferInfo(DawnCommandBuffer* cb,
                                                        UniformDataBlock intrinsicValues);
@@ -110,6 +117,18 @@ private:
 
     wgpu::Buffer fNullBuffer;
     wgpu::TextureView fNullTextureView;
+
+    struct TextureBindGroupKey {
+        std::vector<uint32_t> fIDs;
+        bool operator==(const TextureBindGroupKey& that) const { return fIDs == that.fIDs; }
+        struct Hash {
+            uint32_t operator()(const TextureBindGroupKey& key) const {
+                return SkChecksum::Hash32(key.fIDs.data(), key.fIDs.size() * sizeof(uint32_t));
+            }
+        };
+    };
+    SkLRUCache<TextureBindGroupKey, wgpu::BindGroup, TextureBindGroupKey::Hash>
+            fTextureBindGroups;
 
     class IntrinsicBuffer;
     class IntrinsicConstantsManager;

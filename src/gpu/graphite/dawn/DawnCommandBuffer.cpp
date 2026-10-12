@@ -899,10 +899,16 @@ void DawnCommandBuffer::bindTextureAndSamplers(
         bindGroup = fResourceProvider->findOrCreateSingleTextureSamplerBindGroup(sampler, texture);
     } else {
         std::vector<wgpu::BindGroupEntry> entries;
+        // Resource unique IDs are never reused, so a stale entry can only age out of the cache.
+        std::vector<uint32_t> ids;
+        ids.reserve(2 * numTexturesAndSamplers + 1);
+        ids.push_back(fActiveGraphicsPipeline->uniqueID().asUInt());
 
         for (int i = 0; i < command.fNumTexSamplers; ++i) {
             const auto* texture = static_cast<const DawnTexture*>(command.fTextures[i]->texture());
             const auto* sampler = this->getSampler(command, i);
+            ids.push_back(sampler->uniqueID().asUInt());
+            ids.push_back(texture->uniqueID().asUInt());
             auto& wgpuTextureView = texture->sampleTextureView();
             auto& wgpuSampler = sampler->dawnSampler();
 
@@ -935,6 +941,9 @@ void DawnCommandBuffer::bindTextureAndSamplers(
 
         if (fActiveGraphicsPipeline->dstReadStrategy() == DstReadStrategy::kTextureCopy) {
             // Append the dstCopy sampler and texture as the very last two bind group entries
+            ids.push_back(fDstCopy.second->uniqueID().asUInt());
+            ids.push_back(fDstCopy.first->uniqueID().asUInt());
+
             wgpu::BindGroupEntry samplerEntry;
             samplerEntry.binding = 2*numTexturesAndSamplers - 2;
             samplerEntry.sampler = static_cast<const DawnSampler*>(fDstCopy.second)->dawnSampler();
@@ -947,7 +956,8 @@ void DawnCommandBuffer::bindTextureAndSamplers(
             entries.push_back(textureEntry);
         }
 
-        bindGroup = fResourceProvider->createBindGroup(entries, groupLayout);
+        bindGroup =
+                fResourceProvider->findOrCreateTextureBindGroup(groupLayout, std::move(ids), entries);
     }
 
     fActiveRenderPassEncoder.SetBindGroup(DawnGraphicsPipeline::kTextureBindGroupIndex, bindGroup);
