@@ -1648,6 +1648,28 @@ sk_sp<SkSpecialImage> SkShaderBlurAlgorithm::evalBlur2D(SkSize sigma,
                             std::move(input), srcRect, tileMode, dstRect);
 }
 
+sk_sp<SkSpecialImage> SkShaderBlurAlgorithm::evalLinearBlur2D(SkSize sigma,
+                                                              SkISize radii,
+                                                              sk_sp<SkSpecialImage> input,
+                                                              const SkIRect& srcRect,
+                                                              SkTileMode tileMode,
+                                                              const SkIRect& dstRect) const {
+    std::array<SkV4, kMaxSamples/2> x;
+    std::array<SkV4, kMaxSamples/2> y;
+    Compute1DBlurLinearKernel(sigma.width(), radii.width(), x);
+    Compute1DBlurLinearKernel(sigma.height(), radii.height(), y);
+
+    int width = std::max(LinearKernelWidth(radii.width()), LinearKernelWidth(radii.height()));
+    auto key = static_cast<SkKnownRuntimeEffects::StableKey>(
+            static_cast<uint32_t>(SkKnownRuntimeEffects::StableKey::k2DLinearBlurBase) +
+            (width - 1) / 4);
+    SkRuntimeShaderBuilder builder{sk_ref_sp(GetKnownRuntimeEffect(key))};
+    builder.uniform("xOffsetsAndKernel") = x;
+    builder.uniform("yOffsetsAndKernel") = y;
+    return this->renderBlur(&builder, SkFilterMode::kLinear, radii,
+                            std::move(input), srcRect, tileMode, dstRect);
+}
+
 sk_sp<SkSpecialImage> SkShaderBlurAlgorithm::evalBlur1D(float sigma,
                                                         int radius,
                                                         SkV2 dir,
@@ -1686,7 +1708,17 @@ sk_sp<SkSpecialImage> SkShaderBlurAlgorithm::blur(SkSize sigma,
                                 srcRect,
                                 tileMode,
                                 dstRect);
-    } else {
+    }
+
+    // One pass of both 1D linear kernels (kMaxLinear2DWidth^2 bilinear taps at most) costs less than
+    // the second render pass and intermediate image of the separable blur.
+    const int linearWidth = std::max(LinearKernelWidth(radiusX), LinearKernelWidth(radiusY));
+    if (radiusX > 0 && radiusY > 0 && linearWidth <= kMaxLinear2DWidth) {
+        return this->evalLinearBlur2D(sigma, {radiusX, radiusY}, std::move(src), srcRect, tileMode,
+                                      dstRect);
+    }
+
+    {
         // Use two passes of a 1D kernel (one per axis).
         SkIRect intermediateSrcRect = srcRect;
         SkIRect intermediateDstRect = dstRect;

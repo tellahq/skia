@@ -77,7 +77,12 @@ static constexpr int kUnknownRuntimeEffectIDStart = kUserDefinedKnownRuntimeEffe
     M(HighContrast)         \
     M(Lerp)                 \
     M(Luma)                 \
-    M(Overdraw)
+    M(Overdraw)               \
+    M1(2DLinearBlurBase)      \
+    M2(2DLinearBlur4, 2DLinearBlurBase) \
+    M(2DLinearBlur8)          \
+    M(2DLinearBlur12)         \
+    M(2DLinearBlur16)
 
 // WARNING: If any of the existing values are changed, UniqueKeys that have stably-keyed effects
 // will need to be invalidated. (Adding new values to the end of the enum should be fine though.)
@@ -93,7 +98,7 @@ enum class StableKey : uint32_t {
 #undef M1
 #undef M
 
-    kLast =    kOverdraw,
+    kLast =    k2DLinearBlur16,
 };
 
 static const int kStableKeyCnt = static_cast<int>(StableKey::kLast) -
