@@ -100,6 +100,47 @@ SkRuntimeEffect* make_blur_2D_shader(int maxKernelSize, StableKey stableKey) {
                     options);
 }
 
+// A 2D Gaussian evaluated in one pass from the two 1D linear kernels (offset and weight pairs that
+// rely on bilinear filtering, see SkShaderBlurAlgorithm::Compute1DBlurLinearKernel). The Gaussian
+// is separable and bilinear filtering is a product of its 1D weights, so tapping every pair of 1D
+// samples reproduces the two-pass blur with kernelWidth^2 samples and no intermediate image.
+SkRuntimeEffect* make_linear_blur_2D_shader(int kernelWidth, StableKey stableKey) {
+    SkRuntimeEffect::Options options = get_options(stableKey);
+
+    SkASSERT(kernelWidth <= kMaxBlurSamples);
+    SkASSERT(kernelWidth % 2 == 0);
+    return SkMakeRuntimeEffect(SkRuntimeEffect::MakeForShader,
+            SkStringPrintf(
+                    "const int kMaxUniformKernelSize = %d / 2;"
+                    "const int kMaxLoopLimit = %d / 2;"
+
+                    "uniform half4 xOffsetsAndKernel[kMaxUniformKernelSize];"
+                    "uniform half4 yOffsetsAndKernel[kMaxUniformKernelSize];"
+
+                    "uniform shader child;"
+
+                    "half4 row(float2 coord, half y) {"
+                        "half4 sum = half4(0);"
+                        "for (int i = 0; i < kMaxLoopLimit; ++i) {"
+                            "half4 s = xOffsetsAndKernel[i];"
+                            "sum += s.y * child.eval(coord + float2(s.x, y));"
+                            "sum += s.w * child.eval(coord + float2(s.z, y));"
+                        "}"
+                        "return sum;"
+                    "}"
+
+                    "half4 main(float2 coord) {"
+                        "half4 sum = half4(0);"
+                        "for (int j = 0; j < kMaxLoopLimit; ++j) {"
+                            "half4 s = yOffsetsAndKernel[j];"
+                            "sum += s.y * row(coord, s.x);"
+                            "sum += s.w * row(coord, s.z);"
+                        "}"
+                        "return sum;"
+                    "}", kMaxBlurSamples, kernelWidth).c_str(),
+                    options);
+}
+
 SkRuntimeEffect* make_blend_shader() {
     SkRuntimeEffect::Options options = get_options(StableKey::kBlend);
 
@@ -524,6 +565,22 @@ const SkRuntimeEffect* GetKnownRuntimeEffect(StableKey stableKey) {
         case StableKey::k2DBlur28: {
             static SkRuntimeEffect* s2DBlurEffect = make_blur_2D_shader(28, stableKey);
             return s2DBlurEffect;
+        }
+        case StableKey::k2DLinearBlur4: {
+            static SkRuntimeEffect* sEffect = make_linear_blur_2D_shader(4, stableKey);
+            return sEffect;
+        }
+        case StableKey::k2DLinearBlur8: {
+            static SkRuntimeEffect* sEffect = make_linear_blur_2D_shader(8, stableKey);
+            return sEffect;
+        }
+        case StableKey::k2DLinearBlur12: {
+            static SkRuntimeEffect* sEffect = make_linear_blur_2D_shader(12, stableKey);
+            return sEffect;
+        }
+        case StableKey::k2DLinearBlur16: {
+            static SkRuntimeEffect* sEffect = make_linear_blur_2D_shader(16, stableKey);
+            return sEffect;
         }
         case StableKey::kBlend: {
             static const SkRuntimeEffect* sBlendEffect = make_blend_shader();
