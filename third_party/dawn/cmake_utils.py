@@ -227,6 +227,9 @@ def get_cmake_os_cpu(os, cpu):
     }
     return "Linux", target_cpu_map[cpu]
 
+  if os == "ios":
+    return "iOS", {"arm64": "arm64", "x64": "x86_64"}[cpu]
+
   if os == "mac":
     target_cpu_map = {
       "arm64": "arm64",
