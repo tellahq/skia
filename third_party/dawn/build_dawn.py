@@ -153,6 +153,12 @@ def main():
 
   if target_os == "Darwin" or target_os == "iOS":
     configure_cmd.append(f"-DCMAKE_OSX_ARCHITECTURES={target_cpu}")
+  if target_os == "iOS":
+    # Tella: device or simulator SDK, chosen by the caller.
+    configure_cmd.append(f"-DCMAKE_OSX_SYSROOT={os.environ.get('SKIA_IOS_SYSROOT', 'iphoneos')}")
+    configure_cmd.append("-DCMAKE_OSX_DEPLOYMENT_TARGET=17.0")
+    # Executables need a bundle destination on iOS; the library needs none.
+    configure_cmd.append("-DTINT_BUILD_CMD_TOOLS=OFF")
 
   env = os.environ.copy()
   # Don't write .pyc files, which can cause race conditions when building
