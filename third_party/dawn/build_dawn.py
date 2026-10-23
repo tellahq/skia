@@ -123,8 +123,10 @@ def main():
   if args.enable_rtti:
     configure_cmd.append("-DDAWN_ENABLE_RTTI=ON")
 
+  # Tella renders headless and never creates an X11 surface, and CI build
+  # hosts have no X11 headers.
   if target_os == "Linux":
-    configure_cmd.append("-DDAWN_USE_X11=ON")
+    configure_cmd.append("-DDAWN_USE_X11=OFF")
 
   cxx_flags = args.cxx_flags or []
   ld_flags = args.ld_flags or []
