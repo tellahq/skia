@@ -302,7 +302,7 @@ const DawnFormatCapabilityMap& DawnFormatCapabilityMap::Get() {
         {ETC2RGB8Unorm,        {F::TextureCompressionETC2 >> Filter}},
         {ETC2RGB8UnormSrgb,    {F::TextureCompressionETC2 >> Filter}},
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(__EMSCRIPTEN__) && !defined(SK_WASM32_UNKNOWN_UNKNOWN)
         // Dawn-native only (either format OR feature), these are not included in the format tables.
 
         // NOTE: Unorm16TextureFormats is not an extension of TextureFormatsTier1 and is deprecated.
