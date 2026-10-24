@@ -14,10 +14,10 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSamplingOptions.h"
+#include "include/core/SkSpan.h"
 #include "include/gpu/graphite/Recorder.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
 #include "src/core/SkDevice.h"
 #include "src/gpu/graphite/ClipStack.h"
 #include "src/gpu/graphite/DrawOrder.h"
@@ -84,6 +84,10 @@ class Task;
 class TextureProxy;
 class TextureProxyView;
 
+#if defined(SK_ENABLE_SPARSE_STRIPS)
+class StripGenerator;
+#endif
+
 class Device final : public SkDevice {
 public:
     ~Device() override;
@@ -97,7 +101,8 @@ public:
                               const SkColorInfo&,
                               const SkSurfaceProps&,
                               LoadOp initialLoadOp,
-                              bool registerWithRecorder=true);
+                              bool registerWithRecorder=true,
+                              bool allowUnpremul=false);
     // Convenience factory to create the underlying TextureProxy based on the configuration provided
     static sk_sp<Device> Make(Recorder*,
                               const SkImageInfo&,
@@ -107,7 +112,8 @@ public:
                               const SkSurfaceProps&,
                               LoadOp initialLoadOp,
                               std::string_view label,
-                              bool registerWithRecorder=true);
+                              bool registerWithRecorder=true,
+                              bool allowUnpremul=false);
 
     Device* asGraphiteDevice() override { return this; }
 
@@ -135,9 +141,15 @@ public:
 
     SkStrikeDeviceInfo strikeDeviceInfo() const override;
 
-    TextureProxy* target();
-    // May be null if target is not sampleable.
-    TextureProxyView readSurfaceView() const;
+    // May not be texturable, but includes the swizzle required when sampling or reading to CPU
+    const TextureProxyView& target() const;
+    bool isTexturable() const;
+
+    // TODO (b/540923063): Remove this once flushPendingWork has been moved prior to key extraction.
+    // After that, gradient data inserted into the storage context will no longer be invalidated
+    // a flush. Then the DC can call resetStorageCache itself naturally inside flushPendingWork.
+    void resetStorageCache();
+
     // Can succeed if target is readable but not sampleable. Assumes 'subset' is contained in bounds
     sk_sp<Image> makeImageCopy(const SkIRect& subset, Budgeted, Mipmapped, SkBackingFit);
 
@@ -235,12 +247,12 @@ public:
                               SkCanvas::SrcRectConstraint) override;
     // TODO: Implement these using per-edge AA quads and an inlined image shader program.
     void drawImageLattice(const SkImage*, const SkCanvas::Lattice&,
-                          const SkRect& dst, SkFilterMode, const SkPaint&) override {}
+                          const SkRect& dst, SkFilterMode, const SkPaint&) override;
     void drawAtlas(SkSpan<const SkRSXform>, SkSpan<const SkRect>, SkSpan<const SkColor>,
-                   sk_sp<SkBlender>, const SkPaint&) override {}
+                   sk_sp<SkBlender>, const SkPaint&) override;
 
     void drawDrawable(SkCanvas*, SkDrawable*, const SkMatrix*) override {}
-    void drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) override {}
+    void drawMesh(const SkMesh&, sk_sp<SkBlender>, const SkPaint&) override;
 
     // Special images and layers
     sk_sp<SkSurface> makeSurface(const SkImageInfo&, const SkSurfaceProps&) override;
@@ -252,10 +264,11 @@ public:
     void drawSpecial(SkSpecialImage*, const SkMatrix& localToDevice,
                      const SkSamplingOptions&, const SkPaint&,
                      SkCanvas::SrcRectConstraint) override;
-    void drawCoverageMask(const SkSpecialImage*, const SkMatrix& localToDevice,
+    void drawCoverageMask(const SkSpecialImage*, const SkMatrix& maskToDevice,
                           const SkSamplingOptions&, const SkPaint&) override;
 
-    bool drawBlurredRRect(const SkRRect&, const SkPaint&, float deviceSigma) override;
+    bool drawBlurredRRect(const SkRRect&, const SkPaint&,
+                          SkV2 localSigma, float deviceSigma) override;
 
 #if defined(GPU_TEST_UTILS)
     int testingOnly_pendingRenderSteps() const;
@@ -398,6 +411,10 @@ private:
 #endif
 
     friend class ClipStack; // for drawClipShape
+
+#if defined(SK_ENABLE_SPARSE_STRIPS)
+    std::unique_ptr<StripGenerator> fStripGenerator;
+#endif
 };
 
 } // namespace skgpu::graphite

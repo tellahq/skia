@@ -7,8 +7,8 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "src/base/SkBezierCurves.h"
+#include "include/private/SkFloatingPoint.h"
+#include "src/core/SkBezierCurves.h"
 #include "src/pathops/SkPathOpsCubic.h"
 #include "src/pathops/SkPathOpsPoint.h"
 #include "src/pathops/SkPathOpsTypes.h"
@@ -63,10 +63,11 @@ static void testChopCubicAtT(skiatest::Reporter* reporter, const std::string& na
     }
     {
         skiatest::ReporterContext subsubtest(reporter, "SkBezier Implementation");
-        double input[8];
-        double output[14];
-        std::memcpy(input, curveInputs.data(), 8 * sizeof(double));
-        SkBezierCubic::Subdivide(input, t, output);
+        std::array<double, 8> input;
+        std::array<double, 14> output;
+        SkASSERT_RELEASE(curveInputs.size_bytes() >= 8 * sizeof(double));
+        std::memcpy(input.data(), curveInputs.data(), 8 * sizeof(double));
+        SkBezierCubic::Subdivide(input.data(), t, output.data());
 
         for (int i = 0; i < 7; ++i) {
             REPORTER_ASSERT(reporter,

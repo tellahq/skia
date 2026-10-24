@@ -9,10 +9,11 @@
 
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkPixmap.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkAutoPixmapStorage.h"
 #include "src/core/SkConvertPixels.h"
 
+#include <array>
 #include <cmath>
 #include <utility>
 
@@ -26,7 +27,7 @@ static bool compare_colors(int x, int y,
                            const float rgbaB[],
                            const float tolRGBA[4],
                            std::function<ComparePixmapsErrorReporter>& error) {
-    float diffs[4];
+    std::array<float, 4> diffs;
     bool bad = false;
     for (int i = 0; i < 4; ++i) {
         diffs[i] = rgbaB[i] - rgbaA[i];
@@ -35,7 +36,7 @@ static bool compare_colors(int x, int y,
         }
     }
     if (bad) {
-        error(x, y, diffs);
+        error(x, y, diffs.data());
         return false;
     }
     return true;

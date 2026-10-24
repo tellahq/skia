@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Google LLC.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -29,12 +29,6 @@ struct Matrix3x3;
 struct TransferFunction;
 struct IccProfile;
 
-/// Wrapper for skcms_ApproximateCurve.
-/// Used by cxx::bridge to avoid manual extern "C" declarations.
-bool ApproximateCurveWrapper(rust::Slice<const uint16_t> table,
-                             TransferFunction& out_approx,
-                             float& out_max_error);
-
 /// Convert rust_icc::Matrix3x3 to skcms_Matrix3x3.
 void ToSkcmsMatrix3x3(const Matrix3x3& rust_matrix, skcms_Matrix3x3* out_skcms);
 
@@ -43,10 +37,11 @@ void ToSkcmsTransferFunction(const TransferFunction& rust_tf, skcms_TransferFunc
 
 /// Convert rust_icc::IccProfile to skcms_ICCProfile.
 ///
-/// Populates all skcms fields from moxcms-parsed ICC data:
+/// Populates all skcms fields from parsed ICC data:
 ///   - Color space metadata
 ///   - toXYZD50 matrix and transfer curves (for simple RGB/Gray profiles)
 ///   - CICP metadata (for HDR)
+///   - HAGC metadata (for HDR tone mapping)
 ///   - A2B/B2A transforms (for complex LUT-based profiles)
 ///
 /// Note: The following skcms_ICCProfile members will NOT be populated:

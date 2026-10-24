@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -16,7 +16,7 @@
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/GrRecordingContext.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTemplates.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/core/SkAutoPixmapStorage.h"
 #include "src/gpu/ganesh/GrCaps.h"
@@ -30,6 +30,7 @@
 #include "src/gpu/ganesh/SurfaceContext.h"
 #include "tests/Test.h"
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <utility>
@@ -122,7 +123,7 @@ static bool compare_colors(int x, int y,
                            const float rgbaB[],
                            const float tolRGBA[4],
                            std::function<ComparePixmapsErrorReporter>& error) {
-    float diffs[4];
+    std::array<float, 4> diffs;
     bool bad = false;
     for (int i = 0; i < 4; ++i) {
         diffs[i] = rgbaB[i] - rgbaA[i];
@@ -131,7 +132,7 @@ static bool compare_colors(int x, int y,
         }
     }
     if (bad) {
-        error(x, y, diffs);
+        error(x, y, diffs.data());
         return false;
     }
     return true;

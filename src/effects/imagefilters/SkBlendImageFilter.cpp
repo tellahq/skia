@@ -17,10 +17,10 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkShader.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
 #include "include/effects/SkBlenders.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkBlendModePriv.h"
 #include "src/core/SkBlenderBase.h"
 #include "src/core/SkImageFilterTypes.h"
@@ -30,6 +30,7 @@
 #include "src/core/SkRectPriv.h"
 #include "src/core/SkWriteBuffer.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -190,7 +191,7 @@ sk_sp<SkFlattenable> SkBlendImageFilter::LegacyArithmeticCreateProc(SkReadBuffer
     }
 
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 2);
-    float k[4];
+    std::array<float, 4> k;
     for (int i = 0; i < 4; ++i) {
         k[i] = buffer.readScalar();
     }

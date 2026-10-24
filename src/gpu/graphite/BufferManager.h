@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Google Inc.
+ * Copyright 2021 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -8,16 +8,24 @@
 #define skgpu_graphite_BufferManager_DEFINED
 
 #include "include/core/SkRefCnt.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkMath.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkTHash.h"
 #include "src/gpu/BufferWriter.h"
 #include "src/gpu/graphite/Buffer.h"
 #include "src/gpu/graphite/ResourceTypes.h"
 #include "src/gpu/graphite/UploadBufferManager.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <numeric>
+#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -115,9 +123,25 @@ public:
                                                                size_t stride,
                                                                size_t align=1) {
         SkASSERT(fMappedPtr || !fBuffer); // Writing should have checked validity of allocator first
-        this->prepForStride(stride, align, count);
+        this->prepForStride(stride, align, count, /*headroom=*/0);
         return this->reserve(count, &BufferSubAllocator::getWriterAndBinding);
     }
+
+    /**
+     * Similar to getMappedSubrange above but count and align = 1.
+     *
+     * Additionally it adds another paramenter headroom. Headroom is used to make sure there are at
+     * least headroom bytes from the beginning of the returned subrange to the end of the buffer.
+     * This is useful for when you want the bind buffer size to be larger than the actual data size
+     * of stride. This call will still return a BindBufferInfo that has a size of stride, so the
+     * caller will need to manually adjust the binding size if they want a larger value.
+     */
+    std::pair<BufferWriter, BindBufferInfo> getMappedSubrangeWithHeadroom(size_t stride,
+                                                                          size_t headroom) {
+       SkASSERT(fMappedPtr || !fBuffer); // Writing should have checked validity of allocator first
+       this->prepForStride(stride, /*align=*/1, /*minCount=*/1, headroom);
+       return this->reserve(/*count=*/1, &BufferSubAllocator::getWriterAndBinding);
+   }
 
     // Sub-allocate a slice within the scratch buffer object. This variation should be used when the
     // returned range will be written to by the GPU as part of executing a command buffer.
@@ -126,7 +150,7 @@ public:
     // suballocation behaves identically to getMappedSubrange().
     BindBufferInfo getSubrange(size_t count, size_t stride, size_t align=1) {
         SkASSERT(!fMappedPtr); // Should not be used when data is intended to be written by CPU
-        this->prepForStride(stride, align, count);
+        this->prepForStride(stride, align, count, /*headroom=*/0);
         return this->reserve(count, &BufferSubAllocator::binding);
     }
 
@@ -164,7 +188,7 @@ private:
     // binding alignment (when fStride == 0), then fOffset is updated and fRemaining is set to the
     // number of stride units that fit in the rest of the buffer after fOffset. If not, fRemaining
     // is set to 0 and fOffset is unmodified.
-    void prepForStride(size_t stride, size_t align, size_t minCount);
+    void prepForStride(size_t stride, size_t align, size_t minCount, size_t headroom);
 
     template <typename T>
     T reserve(size_t count, T (BufferSubAllocator::*create)(uint32_t offset, uint32_t size) const) {
@@ -275,8 +299,16 @@ public:
     MappedAllocationInfo getMappedIndexBuffer(size_t count) {
         return this->getMappedBuffer(kIndexBufferIndex, count, sizeof(uint16_t));
     }
-    MappedAllocationInfo getMappedUniformBuffer(size_t count, size_t stride) {
-        return this->getMappedBuffer(kUniformBufferIndex, count, stride);
+    MappedAllocationInfo getMappedUniformBuffer(size_t stride, size_t headroom) {
+        BufferSubAllocator buffer = this->getBuffer(kUniformBufferIndex,
+                                                    /*count=*/1,
+                                                    stride,
+                                                    /*xtraAlignment=*/1,
+                                                    headroom,
+                                                    ClearBuffer::kNo,
+                                                    Shareable::kNo);
+        auto [writer, binding] = buffer.getMappedSubrangeWithHeadroom(stride, headroom);
+        return {std::move(writer), binding, std::move(buffer)};
     }
     MappedAllocationInfo getMappedStorageBuffer(size_t count, size_t stride) {
         return this->getMappedBuffer(kStorageBufferIndex, count, stride);
@@ -316,7 +348,7 @@ public:
     // This type of usage is currently limited to GPU-only storage buffers.
     BufferSubAllocator getScratchStorage(size_t requiredBytes) {
         return this->getBuffer(kGpuOnlyStorageBufferIndex, requiredBytes,
-                               /*stride=*/1, /*xtraAlignment=*/1,
+                               /*stride=*/1, /*xtraAlignment=*/1, /*headroom=*/0,
                                ClearBuffer::kNo, Shareable::kScratch);
     }
 
@@ -326,6 +358,10 @@ public:
     // Regardless of success or failure, the DrawBufferManager is reset to a valid initial state
     // for recording buffer data for the next Recording.
     [[nodiscard]] bool transferToRecording(Recording*);
+
+#if defined(GPU_TEST_UTILS)
+    void testingOnly_onFailedBuffer() { this->onFailedBuffer(); }
+#endif
 
 private:
     friend class BufferSubAllocator;
@@ -362,6 +398,7 @@ private:
                                  size_t count,
                                  size_t stride,
                                  size_t xtraAlignment,
+                                 size_t headroom,
                                  ClearBuffer cleared,
                                  Shareable shareable);
 
@@ -371,6 +408,7 @@ private:
                                                     std::max(count, reservedCount),
                                                     stride,
                                                     xtraAlignment,
+                                                    /*headroom=*/0,
                                                     ClearBuffer::kNo,
                                                     Shareable::kNo);
         auto [writer, binding] = buffer.getMappedSubrange(count, stride);
@@ -380,7 +418,7 @@ private:
     // Helper method for the public GPU-only BufferBindInfo methods
     BindBufferInfo getBinding(int stateIndex, size_t requiredBytes, ClearBuffer cleared) {
         auto alloc = this->getBuffer(stateIndex, requiredBytes,
-                                     /*stride=*/1, /*xtraAlignment=*/1,
+                                     /*stride=*/1, /*xtraAlignment=*/1, /*headroom=*/0,
                                      cleared, Shareable::kNo);
         // `alloc` goes out of scope when this returns, but that is okay because it is only used
         // for GPU-only, non-shareable buffers. The returned BindBufferInfo will be unique still.
@@ -414,6 +452,49 @@ private:
     // transfer buffers from the UploadManager, remember so that the next Recording will fail.
     bool fMappingFailed = false;
 };
+
+/**
+ * BufferAligner contains helper functions for buffer sub-allocation and alignment math.
+ */
+namespace BufferAligner {
+
+SK_ALWAYS_INLINE uint32_t ValidateCountAndStride(size_t count, size_t stride, size_t headroom,
+                                                 uint32_t alignment) {
+    // size_t may just be uint32_t, so this ensures we have enough bits to
+    // compute the required byte product.
+    const uint64_t count64 = SkTo<uint64_t>(count);
+    const uint64_t stride64 = SkTo<uint64_t>(stride);
+    const uint64_t bytes64 = count64 * stride64;
+    const uint64_t headroom64 = SkTo<uint64_t>(headroom);
+    const uint64_t bytesWithHeadroom64 = std::max(headroom64, bytes64);
+    if (count64 > std::numeric_limits<uint32_t>::max() ||
+        stride64 > std::numeric_limits<uint32_t>::max() ||
+        bytes64 > std::numeric_limits<uint32_t>::max() ||
+        headroom64 > std::numeric_limits<uint32_t>::max() ||
+        bytesWithHeadroom64 > std::numeric_limits<uint32_t>::max() - (alignment + 1)) {
+        // Return 0 to skip further allocation attempts.
+        return 0;
+    }
+    // Since count64 and stride64 fit into 32-bits, their product won't overflow a 64-bit
+    // multiply, and we've confirmed product fits into 32-bits with head room to be aligned w/o
+    // overflow.
+    return SkTo<uint32_t>(bytesWithHeadroom64);
+}
+
+SK_ALWAYS_INLINE uint32_t LcmAlignment(uint32_t alignMaybePow2, uint32_t alignProbNonPow2) {
+    SkASSERT(alignMaybePow2 != 0 && alignProbNonPow2 != 0);
+    if (alignMaybePow2 == 1 ||
+        alignMaybePow2 == alignProbNonPow2 ||
+        (SkIsPow2(alignMaybePow2) &&
+         alignProbNonPow2 > alignMaybePow2 &&
+         (alignProbNonPow2 & (alignMaybePow2 - 1)) == 0)) {
+        // Trivial LCM since alignProbNonPow2 is the same or a larger multiple of alignMaybePow2
+        return alignProbNonPow2;
+    } else {
+        return std::lcm(alignMaybePow2, alignProbNonPow2);
+    }
+}
+}  // namespace BufferAligner
 
 /**
  * The StaticBufferManager is the one-time-only analog to DrawBufferManager and provides "static"

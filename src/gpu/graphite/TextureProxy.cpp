@@ -8,6 +8,7 @@
 #include "src/gpu/graphite/TextureProxy.h"
 
 #include "include/gpu/graphite/Recorder.h"
+#include "include/private/SkPixelStorage.h"
 #include "src/core/SkMipmap.h"
 #include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/RecorderPriv.h"
@@ -20,22 +21,24 @@ namespace skgpu::graphite {
 
 TextureProxy::TextureProxy(SkISize dimensions,
                            const TextureInfo& info,
-                           std::string_view label,
-                           skgpu::Budgeted budgeted)
-        : fDimensions(dimensions)
+                           skgpu::Budgeted budgeted,
+                           std::string_view label)
+        : SkPixelStorage(SkPixelStorage::Type::kTextureProxy)
+        , fDimensions(dimensions)
         , fInfo(info)
-        , fLabel(label)
         , fBudgeted(budgeted)
-        , fVolatile(Volatile::kNo) {
+        , fVolatile(Volatile::kNo)
+        , fLabel(label) {
     SkASSERT(fInfo.isValid());
 }
 
 TextureProxy::TextureProxy(sk_sp<Texture> texture)
-        : fDimensions(texture->dimensions())
+        : SkPixelStorage(SkPixelStorage::Type::kTextureProxy)
+        , fDimensions(texture->dimensions())
         , fInfo(texture->textureInfo())
-        , fLabel(texture->getLabel())
         , fBudgeted(texture->budgeted())
         , fVolatile(Volatile::kNo)
+        , fLabel(texture->getLabel())
         , fTexture(std::move(texture)) {
     SkASSERT(fInfo.isValid());
 }
@@ -45,7 +48,8 @@ TextureProxy::TextureProxy(SkISize dimensions,
                            skgpu::Budgeted budgeted,
                            Volatile isVolatile,
                            LazyInstantiateCallback&& callback)
-        : fDimensions(dimensions)
+        : SkPixelStorage(SkPixelStorage::Type::kTextureProxy)
+        , fDimensions(dimensions)
         , fInfo(textureInfo)
         , fBudgeted(budgeted)
         , fVolatile(isVolatile)
@@ -155,20 +159,25 @@ const Texture* TextureProxy::texture() const {
     return fTexture.get();
 }
 
+namespace {
+bool texture_info_and_size_are_valid(
+        SkISize dimensions, const TextureInfo& textureInfo, int maxTextureSize) {
+    return dimensions.width() >= 1  && dimensions.height() >= 1 &&
+           dimensions.width() <= maxTextureSize  && dimensions.height() <= maxTextureSize &&
+           textureInfo.isValid();
+}
+} // anonymous namespace
 sk_sp<TextureProxy> TextureProxy::Make(const Caps* caps,
                                        ResourceProvider* resourceProvider,
                                        SkISize dimensions,
                                        const TextureInfo& textureInfo,
-                                       std::string_view label,
-                                       skgpu::Budgeted budgeted) {
-    if (dimensions.width() < 1 || dimensions.height() < 1 ||
-        dimensions.width() > caps->maxTextureSize() ||
-        dimensions.height() > caps->maxTextureSize() ||
-        !textureInfo.isValid()) {
+                                       skgpu::Budgeted budgeted,
+                                       std::string_view label) {
+    if (!texture_info_and_size_are_valid(dimensions, textureInfo, caps->maxTextureSize())) {
         return nullptr;
     }
 
-    sk_sp<TextureProxy> proxy {new TextureProxy(dimensions, textureInfo, label, budgeted)};
+    sk_sp<TextureProxy> proxy {new TextureProxy(dimensions, textureInfo, budgeted, label)};
     if (budgeted == Budgeted::kNo) {
         // Instantiate immediately to avoid races later on if the client starts to use the wrapping
         // object on multiple threads.
@@ -185,10 +194,7 @@ sk_sp<TextureProxy> TextureProxy::MakeLazy(const Caps* caps,
                                            skgpu::Budgeted budgeted,
                                            Volatile isVolatile,
                                            LazyInstantiateCallback&& callback) {
-    SkASSERT(textureInfo.isValid());
-    if (dimensions.width() < 1 || dimensions.height() < 1 ||
-        dimensions.width() > caps->maxTextureSize() ||
-        dimensions.height() > caps->maxTextureSize()) {
+    if (!texture_info_and_size_are_valid(dimensions, textureInfo, caps->maxTextureSize())) {
         return nullptr;
     }
 

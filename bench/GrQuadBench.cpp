@@ -6,9 +6,11 @@
  */
 
 #include "bench/Benchmark.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/ganesh/geometry/GrQuad.h"
 #include "src/gpu/ganesh/geometry/GrQuadUtils.h"
+
+#include <array>
 
 class GrQuadBoundsBench : public Benchmark {
 public:
@@ -62,7 +64,7 @@ protected:
 
     SkString     fName;
     bool         fPerspective;
-    GrQuad       fQuads[kQuadCount];
+    std::array<GrQuad, kQuadCount> fQuads;
     SkScalar     fArea;
 
     using INHERITED = Benchmark;

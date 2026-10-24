@@ -32,13 +32,13 @@
 #include "include/effects/SkRuntimeEffect.h"
 #include "include/gpu/GpuTypes.h"
 #include "include/private/SkSLSampleUsage.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "include/sksl/SkSLDebugTrace.h"
 #include "include/sksl/SkSLVersion.h"
-#include "src/base/SkStringView.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkRuntimeEffectPriv.h"
+#include "src/core/SkStringView.h"
 #include "src/gpu/KeyBuilder.h"
 #include "src/gpu/SkBackingFit.h"
 #include "src/sksl/SkSLString.h"
@@ -144,7 +144,12 @@ DEF_TEST(SkRuntimeEffect_DeadCodeEliminationStackOverflow, r) {
             return value.xxxx;
         }
     )"));
+#if defined(SK_BUILD_FOR_FUZZER)
+    REPORTER_ASSERT(r, !effect);
+    REPORTER_ASSERT(r, errorText.contains("loop iteration count exceeds fuzzer limit of 256"));
+#else
     REPORTER_ASSERT(r, effect, "%s", errorText.c_str());
+#endif
 }
 
 DEF_TEST(SkRuntimeEffectCanDisableES2Restrictions, r) {
@@ -1697,7 +1702,7 @@ void test_using_transformed_coords(skiatest::Reporter* reporter,
 DEF_GRAPHITE_TEST_FOR_RENDERING_CONTEXTS(SkRuntimeShader_TransformedCoords_Graphite,
                                          reporter,
                                          context,
-                                         CtsEnforcement::kNextRelease) {
+                                         CtsEnforcement::kApiLevel_202604) {
     std::unique_ptr<skgpu::graphite::Recorder> recorder = context->makeRecorder();
     GraphiteInfo graphiteInfo = {context, recorder.get()};
     test_using_transformed_coords(reporter, /*ganeshContext=*/nullptr, &graphiteInfo);
@@ -1708,7 +1713,7 @@ DEF_GRAPHITE_TEST_FOR_RENDERING_CONTEXTS(SkRuntimeShader_TransformedCoords_Graph
 DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(SkRuntimeShader_TransformedCoords_Ganesh,
                                        reporter,
                                        contextInfo,
-                                       CtsEnforcement::kNextRelease) {
+                                       CtsEnforcement::kApiLevel_202604) {
     test_using_transformed_coords(reporter, contextInfo.directContext(), /*graphiteInfo=*/nullptr);
 }
 
@@ -1795,3 +1800,192 @@ DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrSkSLFP_UniformArray,
     }
 }
 #endif
+
+DEF_TEST(SkRuntimeShader_b500080194, r) {
+    constexpr const char* kSkSL =
+        "half4 main(float2 xy) {"
+          "float4 v;"
+          "v.x += xy.x;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "(v = abs(v)).xyz;"
+          "return half4(v);"
+        "}";
+
+    auto [effect, err] = SkRuntimeEffect::MakeForShader(SkString(kSkSL));
+
+    if (!effect) {
+        REPORT_FAILURE(r, "SkSL compile failed", SkString("SkSL compile failed"));
+    } else {
+        sk_sp<SkShader> shader = effect->makeShader(/*uniforms=*/nullptr, {});
+        SkPaint paint;
+        paint.setShader(std::move(shader));
+        sk_sp<SkSurface> surface = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(64, 64));
+        // This caused a crash before the patch.
+        surface->getCanvas()->drawPaint(paint);
+    }
+}
+
+DEF_TEST(SkRuntimeShader_b507643404, r) {
+    constexpr const char* kSkSL =
+        "half4 blend_src_over(half4,half4 dst){"
+          "float a;return(a)/dst;"
+        "}"
+        "half4 main(half4 src,half4){"
+          "return blend_src_over(src,half4(0));"
+        "}";
+
+    // This effect compiles when we aren't optimizing/inlining, but fails when we are.
+    SkRuntimeEffect::Options options;
+    options.forceUnoptimized = false;
+    auto [effect, err] = SkRuntimeEffect::MakeForBlender(SkString(kSkSL));
+    if (!effect) {
+        SkDebugf("Error: %s\n", err.c_str());
+        REPORT_FAILURE(r, "SkSL compile failed", SkString("SkSL compile failed"));
+    } else {
+        sk_sp<SkBlender> blender = effect->makeBlender(nullptr);
+        REPORTER_ASSERT(r, blender);
+        if (!blender) {
+            return;
+        }
+        SkPaint paint;
+        paint.setColor(SK_ColorRED);
+        paint.setBlender(std::move(blender));
+
+        sk_sp<SkSurface> s = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(4, 4));
+        REPORTER_ASSERT(r, s);
+        // We should make sure this doesn't crash
+        s->getCanvas()->drawPaint(paint);
+    }
+}
+
+DEF_TEST(SkRuntimeShader_b416061512, r) {
+    constexpr const char* kSkSL =
+        "half4 main(half4 s,half4){"
+          "int x = int(s.x);"
+          "return half4(half(x - -2147483648));"
+        "}";
+
+    auto [effect, err] = SkRuntimeEffect::MakeForBlender(SkString(kSkSL));
+    if (!effect) {
+        SkDebugf("Error: %s\n", err.c_str());
+        REPORT_FAILURE(r, "SkSL compile failed", SkString("SkSL compile failed"));
+    } else {
+        sk_sp<SkBlender> blender = effect->makeBlender(nullptr);
+        REPORTER_ASSERT(r, blender);
+        if (!blender) {
+            return;
+        }
+        SkPaint paint;
+        paint.setColor(SK_ColorRED);
+        paint.setBlender(std::move(blender));
+
+        sk_sp<SkSurface> s = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(4, 4));
+        REPORTER_ASSERT(r, s);
+        // We should make sure this doesn't crash
+        s->getCanvas()->drawPaint(paint);
+    }
+}
+
+DEF_TEST(SkRuntimeBlender_b466686344, r) {
+    // b/466686344: large loops in strict ES2 runtime effects must not cause execution timeouts.
+    // Under fuzzer builds (SK_BUILD_FOR_FUZZER), kLoopTerminationLimit is lowered to 256.
+    constexpr const char* kSkSL =
+            "half4 main(half4 src, half4 dst) {"
+            "    half y = 1.0;"
+            "    for (int c = 0; c < 1000; ++c) {"
+            "        y += 1.0;"
+            "    }"
+            "    return half4(y);"
+            "}";
+
+    auto [effect, err] = SkRuntimeEffect::MakeForBlender(SkString(kSkSL));
+#if defined(SK_BUILD_FOR_FUZZER)
+    // In fuzzer builds, loops >= 256 iterations are rejected at compile time.
+    REPORTER_ASSERT(r, !effect);
+    REPORTER_ASSERT(r, err.contains("loop must guarantee termination in fewer iterations"));
+#else
+    REPORTER_ASSERT(r, effect != nullptr);
+#endif
+}
+
+DEF_TEST(SkRuntimeColorFilter_b466744542, r) {
+    // b/466744542: nested loops multiplying to excessive iteration counts must be rejected
+    // under fuzzer builds to prevent timeouts in skruntimecolorfilter.
+    auto check_loop = [&](const char* sksl) {
+        auto [effect, err] = SkRuntimeEffect::MakeForColorFilter(SkString(sksl));
+#if defined(SK_BUILD_FOR_FUZZER)
+        REPORTER_ASSERT(r, !effect);
+        REPORTER_ASSERT(r, err.contains("loop iteration count exceeds fuzzer limit of 256"));
+#else
+        REPORTER_ASSERT(r, effect != nullptr, "%s", err.c_str());
+#endif
+    };
+
+    // 1. Nested loops: 20 * 20 = 400 iterations (> 256).
+    check_loop("half4 main(half4 color) {"
+               "    half4 x = color;"
+               "    for (int a = 0; a < 20; ++a) {"
+               "        for (int b = 0; b < 20; ++b) {"
+               "            x += half4(0.01);"
+               "        }"
+               "    }"
+               "    return x;"
+               "}");
+
+    // 2. Nested unrollable loops in ES3 mode: 20 * 20 = 400 iterations (> 256).
+    // Color filters require #version 100 in non-fuzzer builds, so test ES3 mode with MakeForShader.
+    {
+        auto [effect, err] = SkRuntimeEffect::MakeForShader(SkString(
+                "#version 300\n"
+                "half4 main(float2 coords) {"
+                "    half4 x = half4(coords, 0, 1);"
+                "    for (int a = 0; a < 20; ++a) {"
+                "        for (int b = 0; b < 20; ++b) {"
+                "            x += half4(0.01);"
+                "        }"
+                "    }"
+                "    return x;"
+                "}"));
+#if defined(SK_BUILD_FOR_FUZZER)
+        REPORTER_ASSERT(r, !effect);
+        REPORTER_ASSERT(r, err.contains("loop iteration count exceeds fuzzer limit of 256"));
+#else
+        REPORTER_ASSERT(r, effect != nullptr, "%s", err.c_str());
+#endif
+    }
+}
+
+DEF_TEST(SkRuntimeColorFilter_b520831887, r) {
+    // b/520831887: loops with 16-bit integer induction variables (e.g. mediump int)
+    // must not trigger an assertion failure in GetLoopUnrollInfo.
+    constexpr const char* kSkSL =
+            "half4 main(half4 color) {"
+            "    for (mediump int b = 2; b < 4; ++b) {}"
+            "    return color;"
+            "}";
+
+    auto [effect, err] = SkRuntimeEffect::MakeForColorFilter(SkString(kSkSL));
+    REPORTER_ASSERT(r, effect != nullptr, "%s", err.c_str());
+    if (effect) {
+        sk_sp<SkColorFilter> cf = effect->makeColorFilter(nullptr);
+        REPORTER_ASSERT(r, cf != nullptr);
+    }
+}

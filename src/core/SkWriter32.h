@@ -19,11 +19,12 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkNoncopyable.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkNoncopyable.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
+#include "src/partition_alloc/raw_ptr_exclusion.h"
 
 #include <cstdint>
 #include <cstring>
@@ -274,7 +275,7 @@ public:
 
 private:
     union {
-        void*   fPtrAlignment;
+        RAW_PTR_EXCLUSION void* fPtrAlignment;  // RAW_PTR_EXCLUSION: union.
         double  fDoubleAlignment;
         char    fStorage[SIZE];
     } fData;

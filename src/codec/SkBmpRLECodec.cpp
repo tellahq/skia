@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include <array>
 #include "src/codec/SkBmpRLECodec.h"
 
 #include "include/core/SkAlphaType.h"
@@ -13,13 +14,14 @@
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkStream.h"
+#include "include/private/SkAlign.h"
 #include "include/private/SkEncodedInfo.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTemplates.h"
 #include "src/codec/SkCodecPriv.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorPriv.h"
+#include "src/core/SkSafeMath.h"
 
 #include <algorithm>
 #include <cstring>
@@ -324,11 +326,17 @@ int SkBmpRLECodec::decodeRows(const SkImageInfo& info, void* dst, size_t dstRowB
         if (this->colorXform()) {
             decodeInfo = decodeInfo.makeColorType(kXformSrcColorType);
             if (kRGBA_F16_SkColorType == dstInfo.colorType()) {
-                int count = height * dstInfo.width();
+                SkSafeMath safe;
+                int count = safe.mulInt(height, dstInfo.width());
+                size_t xformBufferSize = safe.mul(count, sizeof(uint32_t));
+                size_t rowBytes = safe.mul(dstInfo.width(), sizeof(uint32_t));
+                if (!safe || count <= 0) {
+                    return 0;
+                }
                 this->resetXformBuffer(count);
-                sk_bzero(this->xformBuffer(), count * sizeof(uint32_t));
+                sk_bzero(this->xformBuffer(), xformBufferSize);
                 decodeDst = this->xformBuffer();
-                decodeRowBytes = dstInfo.width() * sizeof(uint32_t);
+                decodeRowBytes = rowBytes;
             }
         }
     }
@@ -517,7 +525,7 @@ int SkBmpRLECodec::decodeRLE(const SkImageInfo& dstInfo, void* dst, size_t dstRo
                 // RLE8 has one color index that gets repeated
                 // RLE4 has two color indexes in the upper and lower 4 bits of
                 // the bytes, which are alternated
-                uint8_t indices[2] = { task, task };
+                std::array<uint8_t, 2> indices = { task, task };
                 if (4 == this->bitsPerPixel()) {
                     indices[0] >>= 4;
                     indices[1] &= 0xf;

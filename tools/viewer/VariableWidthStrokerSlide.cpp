@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -16,6 +16,7 @@
 #include "src/core/SkGeometry.h"
 #include "tools/viewer/ClickHandlerSlide.h"
 
+#include <array>
 #include <stack>
 #include <vector>
 
@@ -882,14 +883,14 @@ void SkVarWidthStroker::appendPathReversed(const SkPath& path, SkPathBuilder* re
 }
 
 int SkVarWidthStroker::segmentDegree(const PathSegment& seg) {
-    static constexpr int lut[] = {
+    static constexpr auto lut = std::to_array<int>({
             -1,  // move,
             1,   // line
             2,   // quad
             -1,  // conic
             3,   // cubic
             -1   // done
-    };
+    });
     const int deg = lut[static_cast<uint8_t>(seg.fVerb)];
     SkASSERT(deg > 0);
     return deg;

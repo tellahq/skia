@@ -19,6 +19,8 @@
 #include "tools/Resources.h"
 #include "tools/ToolUtils.h"
 
+#include <array>
+
 namespace {
 static SkSize computeSize(const SkBitmap& bm, const SkMatrix& mat) {
     SkRect bounds = SkRect::MakeWH(SkIntToScalar(bm.width()),
@@ -46,7 +48,7 @@ static void draw_row(SkCanvas* canvas, const SkBitmap& bm, const SkMatrix& mat, 
 
 class FilterIndiaBoxGM : public skiagm::GM {
     SkBitmap    fBM;
-    SkMatrix    fMatrix[2];
+    std::array<SkMatrix, 2> fMatrix;
 
     void onOnceBeforeDraw() override {
         constexpr char kResource[] = "images/box.gif";
@@ -56,8 +58,8 @@ class FilterIndiaBoxGM : public skiagm::GM {
         }
         fBM.setImmutable();
 
-        SkScalar cx = SkScalarHalf(fBM.width());
-        SkScalar cy = SkScalarHalf(fBM.height());
+        SkScalar cx = fBM.width() / 2.f;
+        SkScalar cy = fBM.height() / 2.f;
 
         float vertScale = 30.0f/55.0f;
         float horizScale = 150.0f/200.0f;

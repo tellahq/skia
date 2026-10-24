@@ -8,7 +8,7 @@
 #ifndef skgpu_graphite_DescriptorTypes_DEFINED
 #define skgpu_graphite_DescriptorTypes_DEFINED
 
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkEnumBitMask.h"
 
 #include <cstdint>
 
@@ -21,13 +21,16 @@ class Sampler;
 */
 enum class DescriptorType : uint8_t {
     kUniformBuffer = 0,
+    kUniformBufferDynamic,
     kTextureSampler,
     kTexture,
     kCombinedTextureSampler,
     kStorageBuffer,
+    kStorageBufferDynamic,
     kInputAttachment,
+    kStorageTexture,
 
-    kLast = kInputAttachment,
+    kLast = kStorageTexture,
 };
 static constexpr int kDescriptorTypeCount = (int)(DescriptorType::kLast) + 1;
 

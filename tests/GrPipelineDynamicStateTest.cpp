@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -15,9 +15,9 @@
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkTypes.h"
 #include "include/gpu/ganesh/GrDirectContext.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkArenaAlloc.h"
+#include "src/core/SkArenaAlloc.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkSLTypeShared.h"
 #include "src/gpu/SkBackingFit.h"
@@ -73,18 +73,18 @@ static constexpr int kNumMeshes = 4;
 static constexpr int kScreenSplitX = kScreenSize/2;
 static constexpr int kScreenSplitY = kScreenSize/2;
 
-static const SkIRect kDynamicScissors[kNumMeshes] = {
-    SkIRect::MakeLTRB(0,              0,              kScreenSplitX,  kScreenSplitY),
-    SkIRect::MakeLTRB(0,              kScreenSplitY,  kScreenSplitX,  kScreenSize),
-    SkIRect::MakeLTRB(kScreenSplitX,  0,              kScreenSize,    kScreenSplitY),
-    SkIRect::MakeLTRB(kScreenSplitX,  kScreenSplitY,  kScreenSize,    kScreenSize),
+static const std::array<SkIRect, kNumMeshes> kDynamicScissors = {
+        SkIRect::MakeLTRB(0,             0,             kScreenSplitX, kScreenSplitY),
+        SkIRect::MakeLTRB(0,             kScreenSplitY, kScreenSplitX, kScreenSize),
+        SkIRect::MakeLTRB(kScreenSplitX, 0,             kScreenSize,   kScreenSplitY),
+        SkIRect::MakeLTRB(kScreenSplitX, kScreenSplitY, kScreenSize,   kScreenSize),
 };
 
-static const GrColor kMeshColors[kNumMeshes] {
-    GrColorPackRGBA(255, 0, 0, 255),
-    GrColorPackRGBA(0, 255, 0, 255),
-    GrColorPackRGBA(0, 0, 255, 255),
-    GrColorPackRGBA(0, 0, 0, 255)
+static const std::array<GrColor, kNumMeshes> kMeshColors = {
+        GrColorPackRGBA(255, 0, 0, 255),
+        GrColorPackRGBA(0, 255, 0, 255),
+        GrColorPackRGBA(0, 0, 255, 255),
+        GrColorPackRGBA(0, 0, 0, 255),
 };
 
 struct Vertex {

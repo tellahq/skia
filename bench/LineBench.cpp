@@ -11,10 +11,11 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
-#include "include/private/base/SkTArray.h"
-#include "src/base/SkRandom.h"
+#include "include/private/SkTArray.h"
 #include "src/core/SkColorPriv.h"
+#include "src/core/SkRandom.h"
 
+#include <array>
 
 class LineBench : public Benchmark {
     SkScalar    fStrokeWidth;
@@ -23,7 +24,7 @@ class LineBench : public Benchmark {
     enum {
         PTS = 500,
     };
-    SkPoint fPts[PTS];
+    std::array<SkPoint, PTS> fPts;
 
 public:
     LineBench(SkScalar width, bool doAA)  {

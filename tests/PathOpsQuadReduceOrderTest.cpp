@@ -5,8 +5,8 @@
  * found in the LICENSE file.
  */
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMath.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMath.h"
 #include "src/pathops/SkPathOpsQuad.h"
 #include "src/pathops/SkReduceOrder.h"
 #include "tests/PathOpsQuadIntersectionTestData.h"
@@ -16,10 +16,10 @@
 #include <array>
 #include <cstddef>
 
-static const QuadPts testSet[] = {
-    {{{1, 1}, {2, 2}, {1, 1.000003}}},
-    {{{1, 0}, {2, 6}, {3, 0}}}
-};
+static const auto testSet = std::to_array<QuadPts>({
+    QuadPts{{{1, 1}, {2, 2}, {1, 1.000003}}},
+    QuadPts{{{1, 0}, {2, 6}, {3, 0}}}
+});
 
 static const size_t testSetCount = std::size(testSet);
 

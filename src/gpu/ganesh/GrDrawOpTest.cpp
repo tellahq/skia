@@ -8,7 +8,7 @@
 #include "src/gpu/ganesh/GrDrawOpTest.h"
 
 #include "include/private/gpu/ganesh/GrContext_Base.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/ganesh/GrBaseContextPriv.h"
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrUserStencilSettings.h"
@@ -49,12 +49,12 @@ const GrUserStencilSettings* GrGetRandomStencil(SkRandom* random, GrContext_Base
             0x77ff>()
     );
 
-    static const GrUserStencilSettings* kStencilSettings[] = {
+    static const auto kStencilSettings = std::to_array<const GrUserStencilSettings*>({
             &GrUserStencilSettings::kUnused,
             &kReads,
             &kWrites,
             &kReadsAndWrites,
-    };
+    });
     return kStencilSettings[random->nextULessThan(std::size(kStencilSettings))];
 }
 

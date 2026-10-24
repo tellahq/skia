@@ -24,8 +24,8 @@
 #include "include/core/SkString.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTemplates.h"
 #include "include/utils/SkTextUtils.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPathPriv.h"
@@ -35,6 +35,7 @@
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/viewer/ClickHandlerSlide.h"
 
+#include <array>
 #include <cfloat>
 
 using namespace skia_private;
@@ -118,7 +119,7 @@ class QuadStrokerSlide : public ClickHandlerSlide {
     enum {
         kCount = 18
     };
-    SkPoint fPts[kCount];
+    std::array<SkPoint, kCount> fPts;
     SkRect fWeightControl;
     SkRect fRadiusControl;
     SkRect fErrorControl;

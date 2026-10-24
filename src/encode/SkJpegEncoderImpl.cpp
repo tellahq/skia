@@ -19,21 +19,21 @@
 #include "include/core/SkYUVAPixmaps.h"
 #include "include/encode/SkEncoder.h"
 #include "include/encode/SkJpegEncoder.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkNoncopyable.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkMSAN.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkNoncopyable.h"
+#include "include/private/SkTemplates.h"
 #include "src/codec/SkJpegConstants.h"
 #include "src/codec/SkJpegPriv.h"
 #include "src/core/SkConvertPixels.h"
 #include "src/core/SkImageInfoPriv.h"
+#include "src/core/SkMSAN.h"
 #include "src/encode/SkImageEncoderFns.h"
 #include "src/encode/SkImageEncoderPriv.h"
 #include "src/encode/SkJPEGWriteUtility.h"
 #include "src/image/SkImage_Base.h"
 
-#include <csetjmp>
+#include <setjmp.h>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -460,7 +460,7 @@ namespace SkJpegMetadataEncoder {
 void AppendICC(SegmentList& segmentList,
                const SkJpegEncoder::Options& options,
                const SkColorSpace* colorSpace) {
-    sk_sp<SkData> icc = icc_from_color_space(colorSpace);
+    sk_sp<SkData> icc = SkWriteICCProfile(colorSpace);
     if (!icc) {
         return;
     }

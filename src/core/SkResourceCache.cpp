@@ -10,12 +10,12 @@
 #include "include/core/SkString.h"
 #include "include/core/SkTraceMemoryDump.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkMath.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkMath.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkCachedData.h"
 #include "src/core/SkChecksum.h"
 #include "src/core/SkMessageBus.h"
@@ -27,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 
 using namespace skia_private;
 
@@ -141,7 +142,7 @@ bool SkResourceCache::find(const Key& key, FindVisitor visitor, void* context) {
 }
 
 static void make_size_str(size_t size, SkString* str) {
-    const char suffix[] = { 'b', 'k', 'm', 'g', 't', 0 };
+    static constexpr auto suffix = std::to_array<char>({ 'b', 'k', 'm', 'g', 't', 0 });
     int i = 0;
     while (suffix[i] && (size > 1024)) {
         i += 1;
@@ -461,16 +462,14 @@ void SkResourceCache::checkMessages() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/** Must hold resource_cache_mutex() when calling. */
 static SkSynchronizedResourceCache* get_cache() {
-    static SkSynchronizedResourceCache* gResourceCache = nullptr;
-    if (nullptr == gResourceCache) {
 #if defined(SK_USE_DISCARDABLE_SCALEDIMAGECACHE)
-        gResourceCache = new SkSynchronizedResourceCache(SkDiscardableMemory::Create);
+    static SkSynchronizedResourceCache* gResourceCache =
+            new SkSynchronizedResourceCache(SkDiscardableMemory::Create);
 #else
-        gResourceCache = new SkSynchronizedResourceCache(SK_DEFAULT_IMAGE_CACHE_LIMIT);
+    static SkSynchronizedResourceCache* gResourceCache =
+            new SkSynchronizedResourceCache(SK_DEFAULT_IMAGE_CACHE_LIMIT);
 #endif
-    }
     return gResourceCache;
 }
 

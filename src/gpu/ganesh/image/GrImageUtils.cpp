@@ -27,7 +27,7 @@
 #include "include/gpu/ganesh/GrTypes.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "include/private/SkIDChangeListener.h"
-#include "include/private/base/SkMutex.h"
+#include "include/private/SkMutex.h"
 #include "include/private/gpu/ganesh/GrImageContext.h"
 #include "include/private/gpu/ganesh/GrTextureGenerator.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
@@ -58,6 +58,7 @@
 #include "src/gpu/ganesh/effects/GrBicubicEffect.h"
 #include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #include "src/gpu/ganesh/effects/GrYUVtoRGBEffect.h"
+#include "src/gpu/ganesh/image/GrMippedBitmap.h"
 #include "src/gpu/ganesh/image/SkImage_Ganesh.h"
 #include "src/gpu/ganesh/image/SkImage_GaneshBase.h"
 #include "src/gpu/ganesh/image/SkImage_RasterPinnable.h"
@@ -67,6 +68,7 @@
 #include "src/image/SkImage_Picture.h"
 #include "src/image/SkImage_Raster.h"
 
+#include <array>
 #include <string_view>
 #include <utility>
 
@@ -108,15 +110,18 @@ std::tuple<GrSurfaceProxyView, GrColorType> RasterAsView(GrRecordingContext* rCo
             mipmapped = skgpu::Mipmapped::kYes;
         }
         return GrMakeCachedBitmapProxyView(rContext,
-                                           raster->bitmap(),
+                                           GrMippedBitmap(raster->bitmap(), raster->refMips()),
                                            /*label=*/"TextureForImageRasterWithPolicyEqualKDraw",
                                            mipmapped);
     }
     auto budgeted = (policy == GrImageTexGenPolicy::kNew_Uncached_Unbudgeted)
                             ? skgpu::Budgeted::kNo
                             : skgpu::Budgeted::kYes;
-    return GrMakeUncachedBitmapProxyView(
-            rContext, raster->bitmap(), mipmapped, SkBackingFit::kExact, budgeted);
+    return GrMakeUncachedBitmapProxyView(rContext,
+                                         GrMippedBitmap(raster->bitmap(), raster->refMips()),
+                                         mipmapped,
+                                         SkBackingFit::kExact,
+                                         budgeted);
 }
 
 // Returns the GrColorType to use with the GrTextureProxy returned from lockTextureProxy. This
@@ -152,8 +157,8 @@ static GrSurfaceProxyView texture_proxy_view_from_planes(GrRecordingContext* ctx
         return {};
     }
 
-    GrSurfaceProxyView views[SkYUVAInfo::kMaxPlanes];
-    GrColorType pixmapColorTypes[SkYUVAInfo::kMaxPlanes];
+    std::array<GrSurfaceProxyView, SkYUVAInfo::kMaxPlanes> views = {};
+    std::array<GrColorType, SkYUVAInfo::kMaxPlanes> pixmapColorTypes = {};
     for (int i = 0; i < yuvaPixmaps.numPlanes(); ++i) {
         // If the sizes of the components are not all the same we choose to create exact-match
         // textures for the smaller ones rather than add a texture domain to the draw.
@@ -173,20 +178,21 @@ static GrSurfaceProxyView texture_proxy_view_from_planes(GrRecordingContext* ctx
             SkASSERT(cachedData);
             cachedData->unref();
         };
-        SkBitmap bitmap;
-        bitmap.installPixels(yuvaPixmaps.plane(i).info(),
-                             yuvaPixmaps.plane(i).writable_addr(),
-                             yuvaPixmaps.plane(i).rowBytes(),
-                             releaseProc,
-                             SkRef(dataStorage.get()));
-        bitmap.setImmutable();
-
+        std::optional<GrMippedBitmap> bitmap =
+                GrMippedBitmap::Make(yuvaPixmaps.plane(i).info(),
+                                     yuvaPixmaps.plane(i).writable_addr(),
+                                     yuvaPixmaps.plane(i).rowBytes(),
+                                     releaseProc,
+                                     SkRef(dataStorage.get()));
+        if (!bitmap) {
+            return {};
+        }
+        pixmapColorTypes[i] = SkColorTypeToGrColorType(bitmap->colorType());
         std::tie(views[i], std::ignore) =
-                GrMakeUncachedBitmapProxyView(ctx, bitmap, skgpu::Mipmapped::kNo, fit);
+                GrMakeUncachedBitmapProxyView(ctx, bitmap.value(), skgpu::Mipmapped::kNo, fit);
         if (!views[i]) {
             return {};
         }
-        pixmapColorTypes[i] = SkColorTypeToGrColorType(bitmap.colorType());
     }
 
     // TODO: investigate preallocating mip maps here
@@ -207,7 +213,7 @@ static GrSurfaceProxyView texture_proxy_view_from_planes(GrRecordingContext* ctx
         return {};
     }
 
-    GrYUVATextureProxies yuvaProxies(yuvaPixmaps.yuvaInfo(), views, pixmapColorTypes);
+    GrYUVATextureProxies yuvaProxies(yuvaPixmaps.yuvaInfo(), views.data(), pixmapColorTypes.data());
     SkAssertResult(yuvaProxies.isValid());
 
     std::unique_ptr<GrFragmentProcessor> fp = GrYUVtoRGBEffect::Make(
@@ -379,11 +385,13 @@ GrSurfaceProxyView LockTextureProxyView(GrRecordingContext* rContext,
         auto budgeted = texGenPolicy == GrImageTexGenPolicy::kNew_Uncached_Unbudgeted
                                 ? skgpu::Budgeted::kNo
                                 : skgpu::Budgeted::kYes;
-        auto view = std::get<0>(GrMakeUncachedBitmapProxyView(rContext,
-                                                              bitmap,
-                                                              mipmapped,
-                                                              SkBackingFit::kExact,
-                                                              budgeted));
+
+        auto view = std::get<0>(
+                GrMakeUncachedBitmapProxyView(rContext,
+                                              GrMippedBitmap(bitmap, as_IB(img)->refMips()),
+                                              mipmapped,
+                                              SkBackingFit::kExact,
+                                              budgeted));
         if (view) {
             installKey(view);
             return view;
@@ -676,8 +684,7 @@ GrSurfaceProxyView FindOrMakeCachedMipmappedView(GrRecordingContext* rContext,
     SkASSERT(baseKey.isValid());
     skgpu::UniqueKey mipmappedKey;
     static const skgpu::UniqueKey::Domain kMipmappedDomain = skgpu::UniqueKey::GenerateDomain();
-    {  // No extra values beyond the domain are required. Must name the var to please
-       // clang-tidy.
+    {  // No extra values beyond the domain are required. Must name the var to please clang-tidy.
         skgpu::UniqueKey::Builder b(&mipmappedKey, baseKey, kMipmappedDomain, 0);
     }
     SkASSERT(mipmappedKey.isValid());
@@ -777,7 +784,8 @@ public:
 
         auto view = threadSafeCache->find(key);
         if (!view) {
-            view = std::get<0>(GrMakeUncachedBitmapProxyView(fContext.get(), data));
+            view = std::get<0>(GrMakeUncachedBitmapProxyView(
+                    fContext.get(), GrMippedBitmap(data)));
             if (!view) {
                 return nullptr;
             }

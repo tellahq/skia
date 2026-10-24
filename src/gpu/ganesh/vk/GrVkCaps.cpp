@@ -302,6 +302,13 @@ bool GrVkCaps::onCanCopySurface(const GrSurfaceProxy* dst, const SkIRect& dstRec
 
 }
 
+namespace {
+bool is_tiler_gpu(uint32_t vendorId) {
+    return vendorId == skgpu::kARM_VkVendor ||
+           vendorId == skgpu::kQualcomm_VkVendor ||
+           vendorId == skgpu::kImagination_VkVendor;
+}
+} // anonymous namespace
 void GrVkCaps::init(const GrContextOptions& contextOptions,
                     const skgpu::VulkanInterface* vkInterface,
                     VkPhysicalDevice physDev,
@@ -415,12 +422,12 @@ void GrVkCaps::init(const GrContextOptions& contextOptions,
     this->initGrCaps(vkInterface, physDev, properties, memoryProperties, features, extensions);
     this->initShaderCaps(properties, features);
 
-    if (skgpu::kQualcomm_VkVendor == properties.vendorID) {
-        // A "clear" load for atlases runs faster on QC than a "discard" load followed by a
+    if (is_tiler_gpu(properties.vendorID)) {
+        // A "clear" load for atlases runs faster on tiler GPUs than a "discard" load followed by a
         // scissored clear.
-        // On NVIDIA and Intel, the discard load followed by clear is faster.
-        // TODO: Evaluate on ARM, Imagination, and ATI.
         fPreferFullscreenClears = true;
+        fDiscardStencilValuesAfterRenderPass = true;
+        fClearsAreFasterThanLoads = true;
     }
 
     if (properties.vendorID == skgpu::kNvidia_VkVendor ||
@@ -470,13 +477,14 @@ void GrVkCaps::init(const GrContextOptions& contextOptions,
     }
 
     if (!contextOptions.fDisableDriverCorrectnessWorkarounds) {
-        this->applyDriverCorrectnessWorkarounds(properties);
+        this->applyDriverCorrectnessWorkarounds(contextOptions, properties);
     }
 
     this->finishInitialization(contextOptions);
 }
 
-void GrVkCaps::applyDriverCorrectnessWorkarounds(const VkPhysicalDeviceProperties& properties) {
+void GrVkCaps::applyDriverCorrectnessWorkarounds(const GrContextOptions& contextOptions,
+                                                 const VkPhysicalDeviceProperties& properties) {
 #if defined(SK_BUILD_FOR_WIN)
     if (skgpu::kNvidia_VkVendor == properties.vendorID ||
         skgpu::kIntel_VkVendor == properties.vendorID) {
@@ -524,8 +532,11 @@ void GrVkCaps::applyDriverCorrectnessWorkarounds(const VkPhysicalDevicePropertie
 
     // We've seen numerous driver bugs on qualcomm devices running on android P (api 28) or earlier
     // when trying to using discardable msaa attachments and loading from resolve. So we disable the
-    // feature for those devices.
-    if (properties.vendorID == skgpu::kQualcomm_VkVendor && androidAPIVersion <= 28) {
+    // feature for those devices. On Imagination (PowerVR) GPUs, using discardable MSAA attachments
+    // and loading from resolve in DMSAA subpasses causes 3D MMU page faults and GPU lockups.
+    if ((properties.vendorID == skgpu::kQualcomm_VkVendor && androidAPIVersion <= 28) ||
+        (properties.vendorID == skgpu::kImagination_VkVendor &&
+         contextOptions.fAllowMSAAOnImagination)) {
         fPreferDiscardableMSAAAttachment = false;
         fSupportsDiscardableMSAAForDMSAA = false;
     }
@@ -536,20 +547,25 @@ void GrVkCaps::applyDriverCorrectnessWorkarounds(const VkPhysicalDevicePropertie
         fShaderCaps->fPerlinNoiseRoundingFix = true;
     }
 
-    // On various devices, when calling vkCmdClearAttachments on a primary command buffer, it
-    // corrupts the bound buffers on the command buffer. As a workaround we invalidate our knowledge
-    // of bound buffers so that we will rebind them on the next draw.
+    // On various devices (including Imagination when clearing MSAA attachments), calling
+    // vkCmdClearAttachments on a primary command buffer corrupts the bound buffers on the command
+    // buffer, leading to vertex/index fetch faults on subsequent draws. As a workaround we
+    // invalidate our knowledge of bound buffers so that we will rebind them on the next draw.
     if (skgpu::kQualcomm_VkVendor == properties.vendorID ||
-        skgpu::kAMD_VkVendor == properties.vendorID) {
+        skgpu::kAMD_VkVendor == properties.vendorID ||
+        (skgpu::kImagination_VkVendor == properties.vendorID &&
+         contextOptions.fAllowMSAAOnImagination)) {
         fMustInvalidatePrimaryCmdBufferStateAfterClearAttachments = true;
     }
 
-    // On Qualcomm and Arm the gpu resolves an area larger than the render pass bounds when using
-    // discardable msaa attachments. This causes the resolve to resolve uninitialized data from the
-    // msaa image into the resolve image.
+    // On Qualcomm, Arm, and Imagination tilers, the GPU resolves an area larger than the render
+    // pass bounds when using discardable MSAA attachments, resolving uninitialized tile data or
+    // faulting on partial render areas.
     // This also occurs on swiftshader: b/303705884
     if (properties.vendorID == skgpu::kQualcomm_VkVendor ||
         properties.vendorID == skgpu::kARM_VkVendor ||
+        (properties.vendorID == skgpu::kImagination_VkVendor &&
+         contextOptions.fAllowMSAAOnImagination) ||
         (properties.vendorID == skgpu::kGoogle_VkVendor &&
          properties.deviceID == kSwiftshader_DeviceID)) {
         fMustLoadFullImageWithDiscardableMSAA = true;
@@ -664,6 +680,9 @@ void GrVkCaps::initGrCaps(const skgpu::VulkanInterface* vkInterface,
     fMaxPreferredRenderTargetSize = fMaxRenderTargetSize;
 
     fMaxPushConstantsSize = std::min(properties.limits.maxPushConstantsSize, (uint32_t)INT_MAX);
+
+    fTransferBufferRowBytesAlignment =
+            std::max<size_t>(4, properties.limits.optimalBufferCopyRowPitchAlignment);
 
     // Assuming since we will always map in the end to upload the data we might as well just map
     // from the get go. There is no hard data to suggest this is faster or slower.
@@ -1051,7 +1070,7 @@ void GrVkCaps::initFormatTable(const GrContextOptions& contextOptions,
         auto& info = this->getFormatInfo(format);
         info.init(contextOptions, interface, physDev, properties, format);
         if (SkToBool(info.fOptimalFlags & FormatInfo::kTexturable_Flag)) {
-            info.fColorTypeInfoCount = 1;
+            info.fColorTypeInfoCount = 2;
             info.fColorTypeInfos = std::make_unique<ColorTypeInfo[]>(info.fColorTypeInfoCount);
             int ctIdx = 0;
             // Format: VK_FORMAT_R16_SFLOAT, Surface: kAlpha_F16
@@ -1063,6 +1082,14 @@ void GrVkCaps::initFormatTable(const GrContextOptions& contextOptions,
                 ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
                 ctInfo.fReadSwizzle = skgpu::Swizzle("000r");
                 ctInfo.fWriteSwizzle = skgpu::Swizzle("a000");
+            }
+            // Format: VK_FORMAT_R16_SFLOAT, Surface: kRed_F16
+            {
+                constexpr GrColorType ct = GrColorType::kR_F16;
+                auto& ctInfo = info.fColorTypeInfos[ctIdx++];
+                ctInfo.fColorType = ct;
+                ctInfo.fTransferColorType = ct;
+                ctInfo.fFlags = ColorTypeInfo::kUploadData_Flag | ColorTypeInfo::kRenderable_Flag;
             }
         }
     }
@@ -1439,6 +1466,7 @@ void GrVkCaps::initFormatTable(const GrContextOptions& contextOptions,
     this->setColorType(GrColorType::kRGB_101010x,      { VK_FORMAT_A2B10G10R10_UNORM_PACK32 });
     this->setColorType(GrColorType::kGray_8,           { VK_FORMAT_R8_UNORM });
     this->setColorType(GrColorType::kAlpha_F16,        { VK_FORMAT_R16_SFLOAT });
+    this->setColorType(GrColorType::kR_F16,            { VK_FORMAT_R16_SFLOAT });
     this->setColorType(GrColorType::kRGBA_F16,         { VK_FORMAT_R16G16B16A16_SFLOAT });
     this->setColorType(GrColorType::kRGBA_F16_Clamped, { VK_FORMAT_R16G16B16A16_SFLOAT });
     this->setColorType(GrColorType::kRGB_F16F16F16x,   { VK_FORMAT_R16G16B16A16_SFLOAT});
@@ -1498,7 +1526,8 @@ void GrVkCaps::FormatInfo::initSampleCounts(const GrContextOptions& contextOptio
     if (flags & VK_SAMPLE_COUNT_1_BIT) {
         fColorSampleCounts.push_back(1);
     }
-    if (skgpu::kImagination_VkVendor == physProps.vendorID) {
+    if (skgpu::kImagination_VkVendor == physProps.vendorID &&
+        !contextOptions.fAllowMSAAOnImagination) {
         // MSAA does not work on imagination
         return;
     }
@@ -2148,6 +2177,7 @@ std::vector<GrTest::TestFormatColorTypeCombination> GrVkCaps::getTestingCombinat
           GrBackendFormats::MakeVk(VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16)},
         { GrColorType::kGray_8,           GrBackendFormats::MakeVk(VK_FORMAT_R8_UNORM)            },
         { GrColorType::kAlpha_F16,        GrBackendFormats::MakeVk(VK_FORMAT_R16_SFLOAT)          },
+        { GrColorType::kR_F16,            GrBackendFormats::MakeVk(VK_FORMAT_R16_SFLOAT)          },
         { GrColorType::kRGBA_F16,         GrBackendFormats::MakeVk(VK_FORMAT_R16G16B16A16_SFLOAT) },
         { GrColorType::kRGBA_F16_Clamped, GrBackendFormats::MakeVk(VK_FORMAT_R16G16B16A16_SFLOAT) },
         { GrColorType::kRGB_F16F16F16x,   GrBackendFormats::MakeVk(VK_FORMAT_R16G16B16A16_SFLOAT) },

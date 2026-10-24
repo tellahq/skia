@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -17,6 +17,7 @@
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #endif
 
+#include <array>
 #include <tuple>
 
 class SkData;
@@ -73,7 +74,7 @@ private:
     sk_sp<SkColorSpace> fColorSpace;
 
     // Memoized SkImages formed with planes, one for each Type.
-    sk_sp<SkImage> fYUVImage[4];
+    std::array<sk_sp<SkImage>, 4> fYUVImage;
 
     LazyYUVImage() = default;
 

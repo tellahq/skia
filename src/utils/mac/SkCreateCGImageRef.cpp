@@ -12,8 +12,8 @@
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkData.h"
 #include "include/encode/SkICC.h"
-#include "include/private/base/SkMacros.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkMacros.h"
+#include "include/private/SkTo.h"
 #include "include/utils/mac/SkCGUtils.h"
 #include "src/core/SkColorData.h"
 #include "src/utils/mac/SkUniqueCFRef.h"
@@ -314,11 +314,7 @@ CGColorSpaceRef SkCreateCGColorSpace(const SkColorSpace* space) {
     }
 
     // Create an SkData with the ICC profile.
-    skcms_TransferFunction fn;
-    skcms_Matrix3x3 to_xyzd50;
-    space->transferFn(&fn);
-    space->toXYZD50(&to_xyzd50);
-    sk_sp<SkData> iccData = SkWriteICCProfile(fn, to_xyzd50);
+    sk_sp<SkData> iccData = SkWriteICCProfile(space);
     if (!iccData) {
         return cgSRGB;
     }

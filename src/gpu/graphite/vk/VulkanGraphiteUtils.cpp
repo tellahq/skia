@@ -7,9 +7,11 @@
 
 #include "src/gpu/graphite/vk/VulkanGraphiteUtils.h"
 
+#include "include/core/SkContext.h"
 #include "include/core/SkStream.h"
 #include "include/gpu/ShaderErrorHandler.h"
 #include "include/gpu/graphite/Context.h"
+#include "include/gpu/graphite/vk/VulkanGraphiteContext.h"
 #include "include/gpu/vk/VulkanBackendContext.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/gpu/graphite/ContextPriv.h"
@@ -19,6 +21,16 @@
 #include "src/gpu/graphite/vk/VulkanSampler.h"
 #include "src/gpu/graphite/vk/VulkanSharedContext.h"
 #include "src/sksl/SkSLProgramSettings.h"
+
+namespace SkContexts {
+
+// Creates a context wrapping a Graphite GPU backend with Vulkan
+std::unique_ptr<SkContext> MakeGraphite(const skgpu::VulkanBackendContext& vkContext,
+                              const SkContextOptions& options) {
+    return nullptr;
+}
+
+}  // namespace SkContexts
 
 namespace skgpu::graphite::ContextFactory {
 
@@ -62,7 +74,7 @@ VkShaderModule CreateVulkanShaderModule(const VulkanSharedContext* context,
                                           /*const VkAllocationCallbacks*=*/nullptr,
                                           &shaderModule));
     if (result != VK_SUCCESS) {
-        SKGPU_LOG_E("Failed to create VkShaderModule");
+        SKIA_LOG_E("Failed to create VkShaderModule");
         return VK_NULL_HANDLE;
     }
     return shaderModule;
@@ -73,7 +85,8 @@ void DescriptorDataToVkDescSetLayout(const VulkanSharedContext* ctxt,
                                      VkDescriptorSetLayout* outLayout) {
     // If requestedDescriptors is empty, that simply means we should create an empty placeholder
     // layout that doesn't actually contain any descriptors.
-    skia_private::STArray<kDescriptorTypeCount, VkDescriptorSetLayoutBinding> bindingLayouts;
+    constexpr int32_t kInlineCount = 16;
+    skia_private::STArray<kInlineCount, VkDescriptorSetLayoutBinding> bindingLayouts;
     for (size_t i = 0; i < requestedDescriptors.size(); i++) {
         if (requestedDescriptors[i].fCount != 0) {
             const DescriptorData& currDescriptor = requestedDescriptors[i];
@@ -110,6 +123,8 @@ void DescriptorDataToVkDescSetLayout(const VulkanSharedContext* ctxt,
 VkDescriptorType DsTypeEnumToVkDs(DescriptorType type) {
     switch (type) {
         case DescriptorType::kUniformBuffer:
+            return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case DescriptorType::kUniformBufferDynamic:
             return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         case DescriptorType::kTextureSampler:
             return VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -118,9 +133,13 @@ VkDescriptorType DsTypeEnumToVkDs(DescriptorType type) {
         case DescriptorType::kCombinedTextureSampler:
             return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         case DescriptorType::kStorageBuffer:
+            return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case DescriptorType::kStorageBufferDynamic:
             return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         case DescriptorType::kInputAttachment:
             return VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        case DescriptorType::kStorageTexture:
+            return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     }
     SkUNREACHABLE;
 }
@@ -165,6 +184,12 @@ VkDescriptorType DsTypeEnumToVkDs(DescriptorType type) {
     M(TextureFormat::kYUV8_P2_420,    VK_FORMAT_G8_B8R8_2PLANE_420_UNORM)                  \
     M(TextureFormat::kYUV8_P3_420,    VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM)                 \
     M(TextureFormat::kYUV10x6_P2_420, VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16) \
+    M(TextureFormat::kYUV8_P2_422,    VK_FORMAT_G8_B8R8_2PLANE_422_UNORM)                  \
+    M(TextureFormat::kYUV8_P3_422,    VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM)                 \
+    M(TextureFormat::kYUV10x6_P2_422, VK_FORMAT_G10X6_B10X6R10X6_2PLANE_422_UNORM_3PACK16) \
+    M(TextureFormat::kYUV8_P2_444,    VK_FORMAT_G8_B8R8_2PLANE_444_UNORM)                  \
+    M(TextureFormat::kYUV8_P3_444,    VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM)                 \
+    M(TextureFormat::kYUV10x6_P2_444, VK_FORMAT_G10X6_B10X6R10X6_2PLANE_444_UNORM_3PACK16) \
     /*TextureFormat::kExternal        VK_FORMAT_UNDEFINED w/ uint64_t sidecar */           \
     M(TextureFormat::kS8,             VK_FORMAT_S8_UINT)                                   \
     M(TextureFormat::kD16,            VK_FORMAT_D16_UNORM)                                 \
@@ -224,6 +249,21 @@ VkShaderStageFlags PipelineStageFlagsToVkShaderStageFlags(
     }
     if (stageFlags & PipelineStageFlags::kCompute) {
         vkStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    return vkStageFlags;
+}
+
+VkPipelineStageFlags PipelineStageFlagsToVkPipelineStageFlags(
+        SkEnumBitMask<PipelineStageFlags> stageFlags) {
+    VkPipelineStageFlags vkStageFlags = 0;
+    if (stageFlags & PipelineStageFlags::kVertexShader) {
+        vkStageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    }
+    if (stageFlags & PipelineStageFlags::kFragmentShader) {
+        vkStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+    if (stageFlags & PipelineStageFlags::kCompute) {
+        vkStageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     }
     return vkStageFlags;
 }

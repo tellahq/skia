@@ -9,11 +9,11 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkHalf.h"
+#include "include/private/SkEnumBitMask.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
+#include "src/core/SkHalf.h"
 #include "src/core/SkMatrixInvert.h"
 #include "src/sksl/SkSLAnalysis.h"
 #include "src/sksl/SkSLBuiltinTypes.h"
@@ -27,8 +27,10 @@
 #include "src/sksl/ir/SkSLChildCall.h"
 #include "src/sksl/ir/SkSLConstructor.h"
 #include "src/sksl/ir/SkSLConstructorCompound.h"
+#include "src/sksl/ir/SkSLFieldAccess.h"
 #include "src/sksl/ir/SkSLFunctionDeclaration.h"
 #include "src/sksl/ir/SkSLFunctionReference.h"
+#include "src/sksl/ir/SkSLIndexExpression.h"
 #include "src/sksl/ir/SkSLLayout.h"
 #include "src/sksl/ir/SkSLLiteral.h"
 #include "src/sksl/ir/SkSLMethodReference.h"
@@ -1020,23 +1022,21 @@ std::string FunctionCall::description(OperatorPrecedence) const {
 
 static bool argument_and_parameter_flags_match(const Expression& argument,
                                                const Variable& parameter) {
-    // If the function parameter has a pixel format, the argument being passed in must have a
-    // matching pixel format.
-    LayoutFlags paramPixelFormat = parameter.layout().fFlags & LayoutFlag::kAllPixelFormats;
-    if (paramPixelFormat != LayoutFlag::kNone) {
-        // The only SkSL type that supports pixel-format qualifiers is a storage texture.
-        if (parameter.type().isStorageTexture()) {
-            // Storage textures are opaquely typed, so there's no way to specify one other than by
-            // directly accessing a variable.
-            if (!argument.is<VariableReference>()) {
-                return false;
-            }
+    // If the function parameter is a storage texture or readonly texture, the pixel format of the
+    // argument must match the parameter's pixel format (including when neither has a format).
+    if (parameter.type().isStorageTexture() || parameter.type().isReadOnlyTexture()) {
+        // Currently, we do not support texture arrays, so GetRootVariable isn't completely
+        // necessary (we only need to trace back the variable reference), but this may be added in
+        // the future.
+        const Variable* var = Analysis::GetRootVariable(argument);
+        if (!var) {
+            return false;
+        }
 
-            // The variable's pixel-format flags must match. (Only one pixel-format bit can be set.)
-            const Variable& var = *argument.as<VariableReference>().variable();
-            if ((var.layout().fFlags & LayoutFlag::kAllPixelFormats) != paramPixelFormat) {
-                return false;
-            }
+        LayoutFlags argPixelFormat = var->layout().fFlags & LayoutFlag::kAllPixelFormats;
+        LayoutFlags paramPixelFormat = parameter.layout().fFlags & LayoutFlag::kAllPixelFormats;
+        if (argPixelFormat != paramPixelFormat) {
+            return false;
         }
     }
 
@@ -1228,6 +1228,37 @@ std::unique_ptr<Expression> FunctionCall::Convert(const Context& context,
     if (function.isMain()) {
         context.fErrors->error(pos, "call to 'main' is not allowed");
         return nullptr;
+    }
+
+    if (function.intrinsicKind() == k_workgroupUniformLoad_IntrinsicKind) {
+        SkASSERT(arguments.size() == 1);
+        const Expression* expr = arguments[0].get();
+        const Variable* rootVar = nullptr;
+        while (expr) {
+            if (expr->is<VariableReference>()) {
+                rootVar = expr->as<VariableReference>().variable();
+                break;
+            }
+            if (expr->is<FieldAccess>()) {
+                expr = expr->as<FieldAccess>().base().get();
+                continue;
+            }
+            if (expr->is<IndexExpression>()) {
+                const IndexExpression& indexExpr = expr->as<IndexExpression>();
+                if (indexExpr.base()->type().isVector()) {
+                    break;
+                }
+                expr = indexExpr.base().get();
+                continue;
+            }
+            break;
+        }
+        if (!rootVar || !rootVar->modifierFlags().isWorkgroup()) {
+            context.fErrors->error(pos,
+                                   "workgroupUniformLoad must be called with a variable expression "
+                                   "in workgroup address space");
+            return nullptr;
+        }
     }
 
     if (function.intrinsicKind() == k_eval_IntrinsicKind) {

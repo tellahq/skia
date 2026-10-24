@@ -75,6 +75,13 @@ def main():
   build_targets = ["webgpu_headers_gen", "dawn_proc", "dawn_native"]
   depfile_path = args.depfile_path
 
+  # On Windows, Debug build has CRT compatibility issues with Skia (MTd vs MT).
+  # Use RelWithDebInfo instead to keep MT, with optimization flags overridden below.
+  if args.build_type == "Debug" and target_os == "Windows":
+    cmake_build_type = "RelWithDebInfo"
+  else:
+    cmake_build_type = args.build_type
+
   script_dir = os.path.dirname(os.path.realpath(__file__))
 
   dawn_dir = os.path.join(script_dir, "..", "externals", "dawn")
@@ -93,7 +100,7 @@ def main():
       f"-DCMAKE_SYSTEM_NAME={target_os}",
       f"-DCMAKE_SYSTEM_PROCESSOR={target_cpu}",
       "-DDAWN_BUILD_MONOLITHIC_LIBRARY=OFF",
-      f"-DCMAKE_BUILD_TYPE={args.build_type}",
+      f"-DCMAKE_BUILD_TYPE={cmake_build_type}",
       # Explicitly set the C++ standard to avoid issues with CMake's feature
       # detection for Clang on Windows.
       "-DCMAKE_CXX_STANDARD=20",
@@ -104,15 +111,22 @@ def main():
       "-DTINT_ENABLE_INSTALL=OFF",
       f"-DDAWN_ENABLE_D3D11={gn_bool_to_cmake(args.dawn_enable_d3d11)}",
       f"-DDAWN_ENABLE_D3D12={gn_bool_to_cmake(args.dawn_enable_d3d12)}",
-      "-DDAWN_ENABLE_DESKTOP_GL=OFF",
       f"-DDAWN_ENABLE_OPENGLES={gn_bool_to_cmake(args.dawn_enable_opengles)}",
       f"-DDAWN_ENABLE_METAL={gn_bool_to_cmake(args.dawn_enable_metal)}",
       f"-DDAWN_ENABLE_VULKAN={gn_bool_to_cmake(args.dawn_enable_vulkan)}",
+      # SPIRV_VALIDATION defaults to on in Windows builds, which we don't need
+      # in a D3D only build.
+      f"-DDAWN_ENABLE_SPIRV_VALIDATION={gn_bool_to_cmake(args.dawn_enable_vulkan)}",
   ]
   configure_cmd += get_third_party_locations()
 
   if args.enable_rtti:
     configure_cmd.append("-DDAWN_ENABLE_RTTI=ON")
+
+  # Tella renders headless and never creates an X11 surface, and CI build
+  # hosts have no X11 headers.
+  if target_os == "Linux":
+    configure_cmd.append("-DDAWN_USE_X11=OFF")
 
   cxx_flags = args.cxx_flags or []
   ld_flags = args.ld_flags or []
@@ -125,6 +139,14 @@ def main():
 
     # The D3D backend requires the HLSL writer.
     configure_cmd.append("-DTINT_BUILD_HLSL_WRITER=ON")
+
+    if args.build_type == "Debug":
+      # Override RelWithDebInfo defaults to be unoptimized and debuggable.
+      # /DNDEBUG is intentionally omitted so Dawn's debug assertions stay active.
+      # CRT stays MT (no MTd/MT mismatch) because the build type is RelWithDebInfo.
+      configure_cmd.append("-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=/Od /Ob0 /Zi")
+      configure_cmd.append("-DCMAKE_C_FLAGS_RELWITHDEBINFO=/Od /Ob0 /Zi")
+      configure_cmd.append("-DDAWN_ALWAYS_ASSERT=ON")
   else:
     configure_cmd.append("-DTINT_BUILD_HLSL_WRITER=OFF")
     cxx_flags.append("-w") # Silence warnings
@@ -173,176 +195,6 @@ def main():
   print(" ".join(configure_cmd))
   print("with environment", env)
   subprocess.run(configure_cmd, check=True, env=env)
-
-  # Dawn/Tint currently fails under Linux clang with -pedantic-errors unless
-  # this dependent type is explicitly marked as a typename.
-  tint_vector = os.path.join(dawn_dir, "src", "tint", "utils", "containers",
-                             "vector.h")
-  with open(tint_vector, "r", encoding="utf-8") as f:
-    tint_vector_contents = f.read()
-  tint_vector_contents = tint_vector_contents.replace(
-      "using VectorCommonType =\n"
-      "    tint::internal::VectorCommonType<IsCastable<std::remove_pointer_t<Ts>...>, Ts...>::type;",
-      "using VectorCommonType =\n"
-      "    typename tint::internal::VectorCommonType<IsCastable<std::remove_pointer_t<Ts>...>, Ts...>::type;")
-  with open(tint_vector, "w", encoding="utf-8") as f:
-    f.write(tint_vector_contents)
-
-  tint_multiplanar = os.path.join(dawn_dir, "src", "tint", "lang", "core",
-                                  "ir", "transform",
-                                  "multiplanar_external_texture.cc")
-  with open(tint_multiplanar, "r", encoding="utf-8") as f:
-    tint_multiplanar_contents = f.read()
-  if "overloaded(Ts...) -> overloaded<Ts...>;" not in tint_multiplanar_contents:
-    tint_multiplanar_contents = tint_multiplanar_contents.replace(
-        "struct overloaded : Ts... {\n"
-        "    using Ts::operator()...;\n"
-        "};\n",
-        "struct overloaded : Ts... {\n"
-        "    using Ts::operator()...;\n"
-        "};\n"
-        "template <class... Ts>\n"
-        "overloaded(Ts...) -> overloaded<Ts...>;\n")
-  with open(tint_multiplanar, "w", encoding="utf-8") as f:
-    f.write(tint_multiplanar_contents)
-
-  dawn_mutex_protected = os.path.join(dawn_dir, "src", "dawn", "common",
-                                      "MutexProtected.h")
-  with open(dawn_mutex_protected, "r", encoding="utf-8") as f:
-    dawn_mutex_protected_contents = f.read()
-  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
-      "Guard(T* obj, Traits::LockType&& lock, class Defer* defer = nullptr)",
-      "Guard(T* obj, typename Traits::LockType&& lock, class Defer* defer = nullptr)")
-  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
-      "CondVarGuard(T* obj, Traits::MutexType& mutex, std::condition_variable* cv)",
-      "CondVarGuard(T* obj, typename Traits::MutexType& mutex, std::condition_variable* cv)")
-  dawn_mutex_protected_contents = dawn_mutex_protected_contents.replace(
-      "mutable Traits::MutexType mMutex;",
-      "mutable typename Traits::MutexType mMutex;")
-  with open(dawn_mutex_protected, "w", encoding="utf-8") as f:
-    f.write(dawn_mutex_protected_contents)
-
-  dawn_tint_utils = os.path.join(dawn_dir, "src", "dawn", "native",
-                                 "TintUtils.h")
-  with open(dawn_tint_utils, "r", encoding="utf-8") as f:
-    dawn_tint_utils_contents = f.read()
-  dawn_tint_utils_contents = dawn_tint_utils_contents.replace(
-      "for (const auto& [bindingNumber, apiBindingIndex] : bgl->GetBindingMap()) {\n"
-      "            if (!(bgl->GetAPIBindingInfo(apiBindingIndex).visibility & StageBit(stage))) {",
-      "for (const auto& bindingEntry : bgl->GetBindingMap()) {\n"
-      "            const auto& bindingNumber = bindingEntry.first;\n"
-      "            const auto& apiBindingIndex = bindingEntry.second;\n"
-      "\n"
-      "            if (!(bgl->GetAPIBindingInfo(apiBindingIndex).visibility & StageBit(stage))) {")
-  with open(dawn_tint_utils, "w", encoding="utf-8") as f:
-    f.write(dawn_tint_utils_contents)
-
-  dawn_command_buffer_vk = os.path.join(dawn_dir, "src", "dawn", "native",
-                                        "vulkan", "CommandBufferVk.cpp")
-  with open(dawn_command_buffer_vk, "r", encoding="utf-8") as f:
-    dawn_command_buffer_vk_contents = f.read()
-  dawn_command_buffer_vk_contents = dawn_command_buffer_vk_contents.replace(
-      "using PipelineSpecialization = Pipeline::Specialization;",
-      "using PipelineSpecialization = typename Pipeline::Specialization;")
-  with open(dawn_command_buffer_vk, "w", encoding="utf-8") as f:
-    f.write(dawn_command_buffer_vk_contents)
-
-  dawn_shader_module_vk = os.path.join(dawn_dir, "src", "dawn", "native",
-                                       "vulkan", "ShaderModuleVk.cpp")
-  with open(dawn_shader_module_vk, "r", encoding="utf-8") as f:
-    dawn_shader_module_vk_contents = f.read()
-  dawn_shader_module_vk_contents = dawn_shader_module_vk_contents.replace(
-      "tint::BindingPoint(0, 1)",
-      "tint::BindingPoint{.group = 0, .binding = 1}")
-  dawn_shader_module_vk_contents = dawn_shader_module_vk_contents.replace(
-      "tint::BindingPoint(0, 0)",
-      "tint::BindingPoint{.group = 0, .binding = 0}")
-  with open(dawn_shader_module_vk, "w", encoding="utf-8") as f:
-    f.write(dawn_shader_module_vk_contents)
-
-  dawn_queue = os.path.join(dawn_dir, "src", "dawn", "native", "Queue.cpp")
-  with open(dawn_queue, "r", encoding="utf-8") as f:
-    dawn_queue_contents = f.read()
-  dawn_queue_contents = dawn_queue_contents.replace(
-      "for (auto [j, texture] : Enumerate(scope.textures)) {\n"
-      "                    if (!texture->HasPinnedUsage()) {\n"
-      "                        continue;\n"
-      "                    }\n"
-      "\n"
-      "                    DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
-      "                        [&](const SubresourceRange&, const TextureSyncInfo& info) -> MaybeError {\n"
-      "                            DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
-      "                                            \"%s is used as %s while pinned to %s.\", texture,\n"
-      "                                            info.usage, texture->GetPinnedUsage());\n"
-      "                            return {};\n"
-      "                        }));\n"
-      "                }",
-      "for (size_t j = 0; j < scope.textures.size(); ++j) {\n"
-      "                    TextureBase* texture = scope.textures[j];\n"
-      "                    if (!texture->HasPinnedUsage()) {\n"
-      "                        continue;\n"
-      "                    }\n"
-      "\n"
-      "                    DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
-      "                        [&](const SubresourceRange&, const TextureSyncInfo& info) -> MaybeError {\n"
-      "                            DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
-      "                                            \"%s is used as %s while pinned to %s.\", texture,\n"
-      "                                            info.usage, texture->GetPinnedUsage());\n"
-      "                            return {};\n"
-      "                        }));\n"
-      "                }")
-  dawn_queue_contents = dawn_queue_contents.replace(
-      "for (auto [j, texture] : Enumerate(scope.textures)) {\n"
-      "                        if (!texture->HasPinnedUsage()) {\n"
-      "                            continue;\n"
-      "                        }\n"
-      "\n"
-      "                        DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
-      "                            [&](const SubresourceRange&,\n"
-      "                                const TextureSyncInfo& info) -> MaybeError {\n"
-      "                                DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
-      "                                                \"%s is used as %s while pinned to %s.\", texture,\n"
-      "                                                info.usage, texture->GetPinnedUsage());\n"
-      "                                return {};\n"
-      "                            }));\n"
-      "                    }",
-      "for (size_t j = 0; j < scope.textures.size(); ++j) {\n"
-      "                        TextureBase* texture = scope.textures[j];\n"
-      "                        if (!texture->HasPinnedUsage()) {\n"
-      "                            continue;\n"
-      "                        }\n"
-      "\n"
-      "                        DAWN_TRY(scope.textureSyncInfos[j].Iterate(\n"
-      "                            [&](const SubresourceRange&,\n"
-      "                                const TextureSyncInfo& info) -> MaybeError {\n"
-      "                                DAWN_INVALID_IF(info.usage != texture->GetPinnedUsage(),\n"
-      "                                                \"%s is used as %s while pinned to %s.\", texture,\n"
-      "                                                info.usage, texture->GetPinnedUsage());\n"
-      "                                return {};\n"
-      "                            }));\n"
-      "                    }")
-  with open(dawn_queue, "w", encoding="utf-8") as f:
-    f.write(dawn_queue_contents)
-
-  absl_options = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
-                              "options.h")
-  with open(absl_options, "r", encoding="utf-8") as f:
-    absl_options_contents = f.read()
-  absl_options_contents = absl_options_contents.replace(
-      "#define ABSL_OPTION_USE_STD_SOURCE_LOCATION 2",
-      "#define ABSL_OPTION_USE_STD_SOURCE_LOCATION 0")
-  with open(absl_options, "w", encoding="utf-8") as f:
-    f.write(absl_options_contents)
-
-  absl_config = os.path.join(dawn_dir, "..", "abseil-cpp", "absl", "base",
-                             "config.h")
-  with open(absl_config, "r", encoding="utf-8") as f:
-    absl_config_contents = f.read()
-  absl_config_contents = absl_config_contents.replace(
-      "#define ABSL_HAVE_STD_SOURCE_LOCATION 1",
-      "#undef ABSL_HAVE_STD_SOURCE_LOCATION")
-  with open(absl_config, "w", encoding="utf-8") as f:
-    f.write(absl_config_contents)
 
   build_cmd = [ninja_exe, "-C", build_dir, "-dkeepdepfile"] + build_targets
   subprocess.run(build_cmd, check=True, env=env)

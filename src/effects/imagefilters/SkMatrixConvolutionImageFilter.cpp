@@ -22,23 +22,25 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkSize.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkTileMode.h"
 #include "include/core/SkTypes.h"
 #include "include/effects/SkImageFilters.h"
 #include "include/effects/SkRuntimeEffect.h"
-#include "include/private/base/SkMath.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkSafeMath.h"
+#include "include/private/SkMath.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkImageFilterTypes.h"
 #include "src/core/SkImageFilter_Base.h"
 #include "src/core/SkKnownRuntimeEffects.h"
 #include "src/core/SkPicturePriv.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkRectPriv.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkWriteBuffer.h"
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -372,11 +374,11 @@ sk_sp<SkShader> SkMatrixConvolutionImageFilter::createShader(const skif::Context
         builder.child("kernel") = cachedKernel->makeRawShader(SkFilterMode::kNearest);
         builder.uniform("innerGainAndBias") = SkV2{fInnerGain, fInnerBias};
     } else {
-        float paddedKernel[kMaxUniformKernelSize];
-        memcpy(paddedKernel, fKernel.data(), kernelLength*sizeof(float));
-        memset(paddedKernel+kernelLength, 0, (kMaxUniformKernelSize - kernelLength)*sizeof(float));
+        std::array<float, kMaxUniformKernelSize> paddedKernel{};
+        SkASSERT_RELEASE(kernelLength <= kMaxUniformKernelSize);
+        std::copy(fKernel.begin(), fKernel.end(), paddedKernel.begin());
 
-        builder.uniform("kernel").set(paddedKernel, kMaxUniformKernelSize);
+        builder.uniform("kernel").set(paddedKernel.data(), kMaxUniformKernelSize);
     }
 
     builder.uniform("size") = SkISize(fKernelSize);

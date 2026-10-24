@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -14,12 +14,10 @@
 #include "include/gpu/ganesh/GrContextOptions.h"
 #include "include/gpu/ganesh/GrContextThreadSafeProxy.h"
 #include "include/gpu/ganesh/GrTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMacros.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMacros.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkArenaAlloc.h"
-#include "src/core/SkCPUContextImpl.h"
-#include "src/core/SkCPURecorderImpl.h"
+#include "src/core/SkArenaAlloc.h"
 #include "src/gpu/ganesh/GrAuditTrail.h"
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrContextThreadSafeProxyPriv.h"
@@ -56,7 +54,6 @@ GrRecordingContext::GrRecordingContext(sk_sp<GrContextThreadSafeProxy> proxy, bo
         , fAuditTrail(new GrAuditTrail())
         , fArenas(ddlRecording) {
     fProxyProvider = std::make_unique<GrProxyProvider>(this);
-    fCPUContext = std::make_unique<skcpu::ContextImpl>();
     fRecorder = std::make_unique<SkGaneshRecorder>(this);
 }
 
@@ -186,7 +183,7 @@ bool GrRecordingContext::supportsProtectedContent() const {
 }
 
 std::unique_ptr<skcpu::Recorder> GrRecordingContext::makeCPURecorder() {
-    return std::make_unique<skcpu::RecorderImpl>(fCPUContext.get());
+    return std::make_unique<skcpu::Recorder>();
 }
 
 SkRecorder* GrRecordingContext::asRecorder() {

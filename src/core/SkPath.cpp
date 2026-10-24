@@ -10,11 +10,11 @@
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkSpan.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkFloatBits.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkEdgeClipper.h"
+#include "src/core/SkFloatBits.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPathEnums.h"
 #include "src/core/SkPathPriv.h"
@@ -23,6 +23,7 @@
 #include "src/core/SkSpanPriv.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits.h>
@@ -91,7 +92,7 @@ bool SkPath::isFinite() const {
 
 bool SkPath::isValid() const { return this->isFinite(); }
 
-uint32_t SkPath::getGenerationID() const { return fPathData->uniqueID(); }
+uint64_t SkPath::getGenerationID() const { return fPathData->uniqueID(); }
 
 #ifdef SK_DEBUG
 void SkPath::validate() const {}
@@ -556,7 +557,7 @@ SkPath::Verb SkPath::Iter::next(SkPoint ptsParam[4]) {
 }
 
 static inline uint8_t SkPathIterPointsPerVerb(SkPathVerb verb) {
-    static const uint8_t gCounts[] = { 1, 2, 3, 3, 4, 0 };
+    static constexpr auto gCounts = std::to_array<uint8_t>({ 1, 2, 3, 3, 4, 0 });
     unsigned index = static_cast<unsigned>(verb);
     SkASSERT(index < std::size(gCounts));
     return gCounts[index];
@@ -939,7 +940,7 @@ std::optional<SkPathRectInfo> SkPathPriv::IsSimpleRect(const SkPath& path, bool 
     if (path.getSegmentMasks() != SkPath::kLine_SegmentMask) {
         return {};
     }
-    SkPoint rectPts[5];
+    std::array<SkPoint, 5> rectPts;
     int rectPtCnt = 0;
     bool needsClose = !isSimpleFill;
     for (auto [v, verbPts, w] : SkPathPriv::Iterate(path)) {

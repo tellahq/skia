@@ -22,12 +22,12 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
-#include "include/private/base/SkMalloc.h"
-#include "src/base/SkAutoMalloc.h"
-#include "src/base/SkMathPriv.h"
-#include "src/base/SkSafeMath.h"
+#include "include/private/SkMalloc.h"
+#include "src/core/SkAutoMalloc.h"
+#include "src/core/SkMathPriv.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/core/SkMipmapBuilder.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkWriteBuffer.h"
 
 #include <memory>
@@ -349,11 +349,7 @@ static sk_sp<SkImage> deserialize_image(sk_sp<SkData> data, SkDeserialProcs dPro
     if (dProcs.fImageDataProc) {
         image = dProcs.fImageDataProc(data, alphaType, dProcs.fImageCtx);
     } else if (dProcs.fImageProc) {
-#if !defined(SK_LEGACY_DESERIAL_IMAGE_PROC)
-        image = dProcs.fImageProc(data->data(), data->size(), dProcs.fImageCtx);
-#else
         image = dProcs.fImageProc(data->data(), data->size(), alphaType, dProcs.fImageCtx);
-#endif
     }
     return image;
 }
@@ -470,6 +466,9 @@ sk_sp<SkTypeface> SkReadBuffer::readTypeface() {
 }
 
 SkFlattenable* SkReadBuffer::readRawFlattenable() {
+    if (!this->isValid()) {
+        return nullptr;
+    }
     SkFlattenable::Factory factory = nullptr;
 
     if (fFactoryCount > 0) {

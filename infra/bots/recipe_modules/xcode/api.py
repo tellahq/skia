@@ -1,4 +1,4 @@
-# Copyright 2025 Google Inc.
+# Copyright 2025 Google LLC
 #
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -8,7 +8,7 @@ from recipe_engine import recipe_api
 
 
 class SkiaXCodeApi(recipe_api.RecipeApi):
-  XCODE_BUILD_VERSION = '16a242d' # Xcode 16.0
+  XCODE_BUILD_VERSION = '16f6' # Xcode 16.4
 
   @property
   def version(self):

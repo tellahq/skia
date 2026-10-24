@@ -8,10 +8,11 @@
 
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPathBuilder.h"
-#include "include/private/base/SkAssert.h"
+#include "include/private/SkAssert.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPointPriv.h"
 
+#include <array>
 #include <utility>
 
 static void ButtCapper(SkPathBuilder* sink, const SkPoint& pivot, const SkVector& normal,
@@ -125,8 +126,8 @@ static void RoundJoiner(SkPathBuilder* outer, SkPathBuilder* inner,
     SkMatrix    matrix;
     matrix.setScale(radius, radius);
     matrix.postTranslate(pivot.fX, pivot.fY);
-    SkConic conics[SkConic::kMaxConicsForArc];
-    int count = SkConic::BuildUnitArc(before, after, dir, &matrix, conics);
+    std::array<SkConic, SkConic::kMaxConicsForArc> conics;
+    int count = SkConic::BuildUnitArc(before, after, dir, &matrix, conics.data());
     if (count > 0) {
         for (int i = 0; i < count; ++i) {
             outer->conicTo(conics[i].fPts[1], conics[i].fPts[2], conics[i].fW);
@@ -149,7 +150,7 @@ static void MiterJoiner(SkPathBuilder* outer, SkPathBuilder* inner,
     SkVector    before = beforeUnitNormal;
     SkVector    after = afterUnitNormal;
     SkVector    mid;
-    SkScalar    sinHalfAngle;
+    float       sinHalfAngle;
     bool        ccw;
 
     if (angleType == kNearlyLine_AngleType) {
@@ -187,7 +188,7 @@ static void MiterJoiner(SkPathBuilder* outer, SkPathBuilder* inner,
         My dotProd is opposite sign, since it is built from normals and not tangents
         hence 1 + dot instead of 1 - dot in the formula
     */
-    sinHalfAngle = SkScalarSqrt(SkScalarHalf(SK_Scalar1 + dotProd));
+    sinHalfAngle = std::sqrt((SK_Scalar1 + dotProd) / 2.f);
     if (sinHalfAngle < invMiterLimit) {
         currIsLine = false;
         goto DO_BLUNT;
@@ -222,18 +223,18 @@ DO_BLUNT:
 /////////////////////////////////////////////////////////////////////////////
 
 SkStrokerPriv::CapProc SkStrokerPriv::CapFactory(SkPaint::Cap cap) {
-    const SkStrokerPriv::CapProc gCappers[] = {
+    static constexpr auto gCappers = std::to_array<SkStrokerPriv::CapProc>({
         ButtCapper, RoundCapper, SquareCapper
-    };
+    });
 
     SkASSERT((unsigned)cap < SkPaint::kCapCount);
     return gCappers[cap];
 }
 
 SkStrokerPriv::JoinProc SkStrokerPriv::JoinFactory(SkPaint::Join join) {
-    const SkStrokerPriv::JoinProc gJoiners[] = {
+    static constexpr auto gJoiners = std::to_array<SkStrokerPriv::JoinProc>({
         MiterJoiner, RoundJoiner, BluntJoiner
-    };
+    });
 
     SkASSERT((unsigned)join < SkPaint::kJoinCount);
     return gJoiners[join];

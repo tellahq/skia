@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -21,11 +21,10 @@
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkMutex.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkArenaAlloc.h"
-#include "src/base/SkZip.h"
+#include "include/private/SkMutex.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
+#include "src/core/SkArenaAlloc.h"
 #include "src/core/SkGlyph.h"
 #include "src/core/SkMask.h"
 #include "src/core/SkReadBuffer.h"
@@ -35,6 +34,7 @@
 #include "src/core/SkStrikeSpec.h"
 #include "src/core/SkTaskGroup.h"
 #include "src/core/SkWriteBuffer.h"
+#include "src/core/SkZip.h"
 #include "src/text/StrikeForGPU.h"
 #include "tests/Test.h"
 #include "tools/ToolUtils.h"
@@ -140,35 +140,37 @@ DEF_TEST(SkStrikeMultiThread, Reporter) {
         SkStrike strike{&strikeCache, strikeSpec, strikeSpec.createScalerContext(), nullptr,
                         nullptr};
 
-        auto perThread = [&](int threadIndex) {
-            barrier.waitForAll();
+        SkTaskGroup taskGroup(*executor);
+        for (int threadIndex = 0; threadIndex < kThreadCount; ++threadIndex) {
+            taskGroup.add([&, threadIndex]() {
+                barrier.waitForAll();
 
-            auto local = data.subspan(threadIndex * 2, data.size() - kThreadCount * 2);
-            for (int i = 0; i < 100; i++) {
-                // Accepted buffers.
-                STArray<64, SkPackedGlyphID> acceptedPackedGlyphIDs;
-                STArray<64, SkPoint> acceptedPositions;
-                STArray<64, SkMask::Format> acceptedFormats;
-                acceptedPackedGlyphIDs.resize(glyphCount);
-                acceptedPositions.resize(glyphCount);
-                const auto acceptedBuffer = SkMakeZip(acceptedPackedGlyphIDs, acceptedPositions);
+                auto local = data.subspan(threadIndex * 2, data.size() - kThreadCount * 2);
+                for (int i = 0; i < 100; i++) {
+                    // Accepted buffers.
+                    STArray<64, SkPackedGlyphID> acceptedPackedGlyphIDs;
+                    STArray<64, SkPoint> acceptedPositions;
+                    STArray<64, SkMask::Format> acceptedFormats;
+                    acceptedPackedGlyphIDs.resize(glyphCount);
+                    acceptedPositions.resize(glyphCount);
+                    const auto acceptedBuffer = SkMakeZip(acceptedPackedGlyphIDs, acceptedPositions);
 
-                // Rejected buffers.
-                STArray<64, SkGlyphID> rejectedGlyphIDs;
-                STArray<64, SkPoint> rejectedPositions;
-                rejectedGlyphIDs.resize(glyphCount);
-                rejectedPositions.resize(glyphCount);
-                const auto rejectedBuffer = SkMakeZip(rejectedGlyphIDs, rejectedPositions);
+                    // Rejected buffers.
+                    STArray<64, SkGlyphID> rejectedGlyphIDs;
+                    STArray<64, SkPoint> rejectedPositions;
+                    rejectedGlyphIDs.resize(glyphCount);
+                    rejectedPositions.resize(glyphCount);
+                    const auto rejectedBuffer = SkMakeZip(rejectedGlyphIDs, rejectedPositions);
 
-                SkZip<const SkGlyphID, const SkPoint> source = local;
+                    SkZip<const SkGlyphID, const SkPoint> source = local;
 
-                auto [accepted, rejected, bounds] =
-                prepare_for_mask_drawing(&strike, source, acceptedBuffer, rejectedBuffer);
-                source = rejected;
-            }
-        };
-
-        SkTaskGroup(*executor).batch(kThreadCount, perThread);
+                    auto [accepted, rejected, bounds] =
+                        prepare_for_mask_drawing(&strike, source, acceptedBuffer, rejectedBuffer);
+                    source = rejected;
+                }
+            });
+        }
+        taskGroup.wait();
     }
 }
 

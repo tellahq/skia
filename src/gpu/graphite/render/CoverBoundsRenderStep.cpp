@@ -8,10 +8,10 @@
 #include "src/gpu/graphite/render/CoverBoundsRenderStep.h"
 
 #include "include/core/SkM44.h"
-#include "include/private/base/SkDebug.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkVx.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
 #include "src/core/SkSLTypeShared.h"
+#include "src/core/SkVx.h"
 #include "src/gpu/BufferWriter.h"
 #include "src/gpu/graphite/Attribute.h"
 #include "src/gpu/graphite/DrawOrder.h"
@@ -43,11 +43,12 @@ CoverBoundsRenderStep::CoverBoundsRenderStep(Layout layout,
                                       {"ssboIndex", VertexAttribType::kUInt, SkSLType::kUInt},
                                       {"mat0", VertexAttribType::kFloat3, SkSLType::kFloat3},
                                       {"mat1", VertexAttribType::kFloat3, SkSLType::kFloat3},
-                                      {"mat2", VertexAttribType::kFloat3, SkSLType::kFloat3}}}) {}
+                                      {"mat2", VertexAttribType::kFloat3, SkSLType::kFloat3}}},
+                     /*storageUniforms=*/{}) {}
 
 CoverBoundsRenderStep::~CoverBoundsRenderStep() {}
 
-std::string CoverBoundsRenderStep::vertexSkSL() const {
+std::string CoverBoundsRenderStep::vertexSkSL(const RootNodesInfo&) const {
     // Returns the body of a vertex function, which must define a float4 devPosition variable and
     // must write to an already-defined float2 stepLocalCoords variable.
     return "float4 devPosition = cover_bounds_vertex_fn("
@@ -57,6 +58,7 @@ std::string CoverBoundsRenderStep::vertexSkSL() const {
 }
 
 void CoverBoundsRenderStep::writeVertices(DrawWriter* writer,
+                                          StorageContext* /*storageContext*/,
                                           const DrawParams& params,
                                           uint32_t ssboIndex) const {
     // Each instance is 4 vertices, forming 2 triangles from a single triangle strip, so no indices

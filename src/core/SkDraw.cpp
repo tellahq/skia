@@ -25,17 +25,15 @@
 #include "include/core/SkSpan.h"
 #include "include/core/SkStrokeRec.h"
 #include "include/core/SkTileMode.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkCPUTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkFixed.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkArenaAlloc.h"
-#include "src/base/SkTLazy.h"
-#include "src/base/SkZip.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkCPUTypes.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkFixed.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
+#include "src/core/SkArenaAlloc.h"
 #include "src/core/SkAutoBlitterChoose.h"
 #include "src/core/SkBlendModePriv.h"
 #include "src/core/SkBlitter.h"
@@ -47,16 +45,20 @@
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkMatrixUtils.h"
+#include "src/core/SkMipmap.h"
 #include "src/core/SkPathData.h"
 #include "src/core/SkPathEffectBase.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkRasterClip.h"
 #include "src/core/SkRectPriv.h"
 #include "src/core/SkScan.h"
+#include "src/core/SkTLazy.h"
+#include "src/core/SkZip.h"
 #include "src/image/SkImage_Raster.h"
 #include "src/shaders/SkImageShader.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -68,14 +70,23 @@ using namespace skia_private;
 
 namespace skcpu {
 
-static SkPaint make_paint_with_image(const SkPaint& origPaint, const SkBitmap& bitmap,
-                                     const SkSamplingOptions& sampling,
-                                     SkMatrix* matrix = nullptr) {
+static SkPaint make_paint_with_image_and_mips(const SkPaint& origPaint,
+                                              const SkBitmap& bitmap,
+                                              const SkSamplingOptions& sampling,
+                                              SkMatrix* matrix,
+                                              sk_sp<SkMipmap> mips) {
     SkPaint paint(origPaint);
-    auto img = SkImage_Raster::MakeFromBitmap(bitmap, SkCopyPixelsMode::kNever);
+    auto img = SkImage_Raster::MakeFromBitmap(bitmap, SkCopyPixelsMode::kNever, std::move(mips));
     paint.setShader(img->makeShaderForPaint(
             origPaint, SkTileMode::kClamp, SkTileMode::kClamp, sampling, matrix));
     return paint;
+}
+
+static SkPaint make_paint_with_image(const SkPaint& origPaint,
+                                     const SkBitmap& bitmap,
+                                     const SkSamplingOptions& sampling,
+                                     SkMatrix* matrix) {
+    return make_paint_with_image_and_mips(origPaint, bitmap, sampling, matrix, nullptr);
 }
 
 Draw::Draw() { fBlitterChooser = SkBlitter::Choose; }
@@ -209,17 +220,17 @@ bool PtProcRec::init(SkCanvas::PointMode mode, const SkPaint& paint,
     if (paint.getPathEffect() || paint.getMaskFilter()) {
         return false;
     }
-    SkScalar width = paint.getStrokeWidth();
-    SkScalar radius = -1;   // sentinel value, a "valid" value must be > 0
+    float width = paint.getStrokeWidth();
+    float radius = -1;   // sentinel value, a "valid" value must be > 0
 
     if (0 == width) {
         radius = 0.5f;
     } else if (paint.getStrokeCap() != SkPaint::kRound_Cap &&
                matrix->isScaleTranslate() && SkCanvas::kPoints_PointMode == mode) {
-        SkScalar sx = matrix->get(SkMatrix::kMScaleX);
-        SkScalar sy = matrix->get(SkMatrix::kMScaleY);
+        float sx = matrix->get(SkMatrix::kMScaleX);
+        float sy = matrix->get(SkMatrix::kMScaleY);
         if (SkScalarNearlyZero(sx - sy)) {
-            radius = SkScalarHalf(width * SkScalarAbs(sx));
+            radius = (width * std::abs(sx)) / 2.f;
         }
     }
     if (radius > 0) {
@@ -261,9 +272,9 @@ PtProcRec::Proc PtProcRec::chooseProc(SkBlitter** blitterPtr) {
 
     if (fPaint->isAntiAlias()) {
         if (0 == fPaint->getStrokeWidth()) {
-            static const Proc gAAProcs[] = {
+            static constexpr auto gAAProcs = std::to_array<Proc>({
                 aa_square_proc, aa_line_hair_proc, aa_poly_hair_proc
-            };
+            });
             proc = gAAProcs[fMode];
         } else if (fPaint->getStrokeCap() != SkPaint::kRound_Cap) {
             SkASSERT(SkCanvas::kPoints_PointMode == fMode);
@@ -271,9 +282,9 @@ PtProcRec::Proc PtProcRec::chooseProc(SkBlitter** blitterPtr) {
         }
     } else {    // BW
         if (fRadius <= 0.5f) {    // small radii and hairline
-            static const Proc gBWProcs[] = {
+            static constexpr auto gBWProcs = std::to_array<Proc>({
                 bw_pt_hair_proc, bw_line_hair_proc, bw_poly_hair_proc
-            };
+            });
             proc = gBWProcs[fMode];
         } else {
             proc = bw_square_proc;
@@ -359,7 +370,8 @@ void Draw::drawBitmap(const SkBitmap& bitmap,
                       const SkMatrix& prematrix,
                       const SkRect* dstBounds,
                       const SkSamplingOptions& sampling,
-                      const SkPaint& origPaint) const {
+                      const SkPaint& origPaint,
+                      sk_sp<SkMipmap> mips) const {
     SkDEBUGCODE(this->validate();)
 
     // nothing to draw
@@ -420,7 +432,8 @@ void Draw::drawBitmap(const SkBitmap& bitmap,
     }
 #endif
 
-    SkPaint paintWithShader = make_paint_with_image(*paint, bitmap, sampling);
+    SkPaint paintWithShader =
+            make_paint_with_image_and_mips(*paint, bitmap, sampling, nullptr, mips);
     const SkRect srcBounds = SkRect::MakeIWH(bitmap.width(), bitmap.height());
     if (dstBounds) {
         this->drawRect(srcBounds, paintWithShader, &prematrix, dstBounds);
@@ -587,7 +600,7 @@ void Draw::drawBitmapAsMask(const SkBitmap& bitmap,
             SkPaint tmpPaint;
             tmpPaint.setAntiAlias(paint.isAntiAlias());
             tmpPaint.setDither(paint.isDither());
-            SkPaint paintWithShader = make_paint_with_image(tmpPaint, bitmap, sampling);
+            SkPaint paintWithShader = make_paint_with_image(tmpPaint, bitmap, sampling, nullptr);
             SkRect rr;
             rr.setIWH(bitmap.width(), bitmap.height());
             c.drawRect(rr, paintWithShader);
@@ -740,7 +753,7 @@ void Draw::drawRect(const SkRect& prePaintRect,
             const SkPoint& ssize = (RectType::kStroke == rtype)
                 ? strokeSize
                 : compute_stroke_size(paint, *fCTM);
-            bbox.outset(SkScalarHalf(ssize.x()), SkScalarHalf(ssize.y()));
+            bbox.outset(ssize.x() / 2.f, ssize.y() / 2.f);
         }
     }
     if (SkPathPriv::TooBigForMath(bbox)) {
@@ -791,14 +804,14 @@ void Draw::drawRect(const SkRect& prePaintRect,
     }
 }
 
-static SkScalar fast_len(const SkVector& vec) {
-    SkScalar x = SkScalarAbs(vec.fX);
-    SkScalar y = SkScalarAbs(vec.fY);
+static float fast_len(const SkVector& vec) {
+    float x = std::abs(vec.fX);
+    float y = std::abs(vec.fY);
     if (x < y) {
         using std::swap;
         swap(x, y);
     }
-    return x + SkScalarHalf(y);
+    return x + (y / 2.f);
 }
 
 bool DrawTreatAAStrokeAsHairline(SkScalar strokeWidth, const SkMatrix& matrix, SkScalar* coverage) {
@@ -1228,8 +1241,8 @@ void Draw::drawDevicePoints(SkCanvas::PointMode mode,
             SkPaint newPaint(paint);
             newPaint.setStyle(SkPaint::kFill_Style);
 
-            SkScalar width = newPaint.getStrokeWidth();
-            SkScalar radius = SkScalarHalf(width);
+            float width = newPaint.getStrokeWidth();
+            float radius = width / 2.f;
 
             if (newPaint.getStrokeCap() == SkPaint::kRound_Cap) {
                 if (device) {
@@ -1301,7 +1314,7 @@ void Draw::drawDevicePoints(SkCanvas::PointMode mode,
 
                     if (pointData.fSize.fX == pointData.fSize.fY) {
                         // The rest of the dashed line can just be drawn as points
-                        SkASSERT(pointData.fSize.fX == SkScalarHalf(newP.getStrokeWidth()));
+                        SkASSERT(pointData.fSize.fX == newP.getStrokeWidth() / 2.f);
 
                         if (SkPathEffectBase::PointData::kCircles_PointFlag & pointData.fFlags) {
                             newP.setStrokeCap(SkPaint::kRound_Cap);

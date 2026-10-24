@@ -9,7 +9,6 @@
 
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkBlender.h"
-#include "include/core/SkCPURecorder.h"
 #include "include/core/SkClipOp.h"
 #include "include/core/SkColorType.h"
 #include "include/core/SkImageInfo.h"
@@ -27,9 +26,9 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkTileMode.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkTo.h"
-#include "src/core/SkCPURecorderImpl.h"
+#include "include/cpu/Recorder.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkDraw.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkMatrixPriv.h"
@@ -135,9 +134,6 @@ public:
         }
 
         fDraw.fProps = &fDevice->surfaceProps();
-        if (fDevice->fRecorder) {
-            fDraw.fCtx = fDevice->fRecorder->ctx();
-        }
     }
 
     bool needsTiling() const { return fNeedsTiling; }
@@ -231,14 +227,14 @@ static bool valid_for_bitmap_device(const SkImageInfo& info,
 }
 
 SkBitmapDevice::SkBitmapDevice(const SkBitmap& bitmap)
-        : SkBitmapDevice(asRRI(skcpu::Recorder::TODO()), bitmap) {}
+        : SkBitmapDevice(skcpu::Recorder::TODO(), bitmap) {}
 
 SkBitmapDevice::SkBitmapDevice(const SkBitmap& bitmap,
                                const SkSurfaceProps& surfaceProps,
                                SkRasterHandleAllocator::Handle hndl)
-        : SkBitmapDevice(asRRI(skcpu::Recorder::TODO()), bitmap, surfaceProps, hndl) {}
+        : SkBitmapDevice(skcpu::Recorder::TODO(), bitmap, surfaceProps, hndl) {}
 
-SkBitmapDevice::SkBitmapDevice(skcpu::RecorderImpl* recorder, const SkBitmap& bitmap)
+SkBitmapDevice::SkBitmapDevice(skcpu::Recorder* recorder, const SkBitmap& bitmap)
         : SkDevice(bitmap.info(), SkSurfaceProps())
         , fRecorder(recorder)
         , fBitmap(bitmap)
@@ -247,7 +243,7 @@ SkBitmapDevice::SkBitmapDevice(skcpu::RecorderImpl* recorder, const SkBitmap& bi
     SkASSERT(valid_for_bitmap_device(bitmap.info(), nullptr));
 }
 
-SkBitmapDevice::SkBitmapDevice(skcpu::RecorderImpl* recorder,
+SkBitmapDevice::SkBitmapDevice(skcpu::Recorder* recorder,
                                const SkBitmap& bitmap,
                                const SkSurfaceProps& surfaceProps,
                                SkRasterHandleAllocator::Handle hndl)
@@ -259,6 +255,8 @@ SkBitmapDevice::SkBitmapDevice(skcpu::RecorderImpl* recorder,
         , fGlyphPainter(this->surfaceProps(), bitmap.colorType(), bitmap.colorSpace()) {
     SkASSERT(valid_for_bitmap_device(bitmap.info(), nullptr));
 }
+
+SkRecorder* SkBitmapDevice::baseRecorder() const { return fRecorder; }
 
 sk_sp<SkBitmapDevice> SkBitmapDevice::Create(const SkImageInfo& origInfo,
                                              const SkSurfaceProps& surfaceProps,
@@ -388,9 +386,12 @@ void SkBitmapDevice::drawPath(const SkPath& path, const SkPaint& paint) {
     }
 }
 
-void SkBitmapDevice::drawBitmap(const SkBitmap& bitmap, const SkMatrix& matrix,
-                                const SkRect* dstOrNull, const SkSamplingOptions& sampling,
-                                const SkPaint& paint) {
+void SkBitmapDevice::drawBitmap(const SkBitmap& bitmap,
+                                const SkMatrix& matrix,
+                                const SkRect* dstOrNull,
+                                const SkSamplingOptions& sampling,
+                                const SkPaint& paint,
+                                sk_sp<SkMipmap> mips) {
     const SkRect* bounds = dstOrNull;
     SkRect storage;
     if (!bounds && SkDrawTiler::NeedsTiling(this)) {
@@ -401,7 +402,7 @@ void SkBitmapDevice::drawBitmap(const SkBitmap& bitmap, const SkMatrix& matrix,
             bounds = &storage;
         }
     }
-    LOOP_TILER(drawBitmap(bitmap, matrix, dstOrNull, sampling, paint), bounds)
+    LOOP_TILER(drawBitmap(bitmap, matrix, dstOrNull, sampling, paint, mips), bounds)
 }
 
 static inline bool CanApplyDstMatrixAsCTM(const SkMatrix& m, const SkPaint& paint) {
@@ -416,15 +417,18 @@ static inline bool CanApplyDstMatrixAsCTM(const SkMatrix& m, const SkPaint& pain
 void SkBitmapDevice::drawImageRect(const SkImage* image, const SkRect* src, const SkRect& dst,
                                    const SkSamplingOptions& sampling, const SkPaint& paint,
                                    SkCanvas::SrcRectConstraint constraint) {
+    SkASSERT(image);
     SkASSERT(dst.isFinite());
     SkASSERT(dst.isSorted());
 
     SkBitmap bitmap;
     // TODO: Elevate direct context requirement to public API and remove cheat.
-    auto dContext = as_IB(image)->directContext();
-    if (!as_IB(image)->getROPixels(dContext, &bitmap)) {
+    auto imageBase = as_IB(image);
+    auto dContext = imageBase->directContext();
+    if (!imageBase->getROPixels(dContext, &bitmap)) {
         return;
     }
+    sk_sp<SkMipmap> mips = imageBase->refMips();
 
     SkRect      bitmapBounds, tmpSrc, tmpDst;
     SkBitmap    tmpBitmap;
@@ -477,6 +481,7 @@ void SkBitmapDevice::drawImageRect(const SkImage* image, const SkRect* src, cons
             return;
         }
         bitmapPtr = &tmpBitmap;
+        mips = nullptr;
 
         // Since we did an extract, we need to adjust the matrix accordingly
         SkScalar dx = 0, dy = 0;
@@ -508,7 +513,7 @@ void SkBitmapDevice::drawImageRect(const SkImage* image, const SkRect* src, cons
         // matrix with the CTM, and try to call drawSprite if it can. If not,
         // it will make a shader and call drawRect, as we do below.
         if (CanApplyDstMatrixAsCTM(matrix, paint)) {
-            this->drawBitmap(*bitmapPtr, matrix, dstPtr, sampling, paint);
+            this->drawBitmap(*bitmapPtr, matrix, dstPtr, sampling, paint, mips);
             return;
         }
     }
@@ -516,7 +521,7 @@ void SkBitmapDevice::drawImageRect(const SkImage* image, const SkRect* src, cons
     USE_SHADER:
 
     // construct a shader, so we can call drawRect with the dst
-    auto img = SkImage_Raster::MakeFromBitmap(*bitmapPtr, SkCopyPixelsMode::kNever);
+    auto img = SkImage_Raster::MakeFromBitmap(*bitmapPtr, SkCopyPixelsMode::kNever, mips);
     auto shader = img->makeShaderForPaint(
             paint, SkTileMode::kClamp, SkTileMode::kClamp, sampling, &matrix);
     if (!shader) {
@@ -583,7 +588,7 @@ void SkBitmapDevice::drawSpecial(SkSpecialImage* src,
         }
         draw.fCTM = &localToDevice;
         draw.fRC = &fRCStack.rc();
-        draw.drawBitmap(resultBM, SkMatrix::I(), nullptr, sampling, paint);
+        draw.drawBitmap(resultBM, SkMatrix::I(), nullptr, sampling, paint, nullptr);
     }
 }
 
@@ -609,7 +614,14 @@ void SkBitmapDevice::drawCoverageMask(const SkSpecialImage* mask,
 }
 
 // Try to filter as nine patch as a fast path.
-bool SkBitmapDevice::drawBlurredRRect(const SkRRect& rrect, const SkPaint& paint, float) {
+bool SkBitmapDevice::drawBlurredRRect(const SkRRect& rrect, const SkPaint& paint,
+                                      SkV2 /*localSigma*/, float /*deviceSigma*/) {
+    // If there is more than just translation, rotation, and uniform scale, then the results of
+    // analytic blurring will be different than mask filter blurring.
+    if (!this->localToDevice().isSimilarity()) {
+        return false;
+    }
+
     SkASSERT(paint.getMaskFilter()
              && as_MFB(paint.getMaskFilter())->type() == SkMaskFilterBase::Type::kBlur);
 

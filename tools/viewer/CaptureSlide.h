@@ -13,6 +13,7 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkSize.h"
 #include "src/capture/SkCapture.h"
+#include "tools/debugger/DebugCanvas.h"
 #include "tools/viewer/Slide.h"
 
 class SkCanvas;
@@ -36,9 +37,14 @@ public:
 
 private:
     sk_sp<SkCapture> fCapture;
-    int fCurrentPictureIndex = 0;
+    int fCurrentAssetIndex = 0;
+    int fCurrentRecordingCaptureIndex = 0;
+    int fCurrentDrawTaskIndex = 0;
     bool fInvalidate = false;
     SkCapture::Metadata fMetadata;
+    std::unique_ptr<DebugCanvas> fDebugCanvas;
+
+    void updateActiveAssetIndex();
 };
 
 #endif

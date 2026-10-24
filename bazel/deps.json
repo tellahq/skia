@@ -2,10 +2,40 @@
   "!note": "DO NOT MODIFY BY HAND. Instead, bazelisk run //bazel/deps_parser",
   "direct": [
     {
+      "build_file": "//bazel/external/d3d12allocator:BUILD.bazel",
+      "commit": "169895d529dfce00390a20e69c2f516066fe7a3b",
+      "name": "d3d12allocator",
+      "remote": "https://skia.googlesource.com/external/github.com/GPUOpen-LibrariesAndSDKs/D3D12MemoryAllocator.git"
+    },
+    {
       "build_file": "//bazel/external/dawn:BUILD.bazel",
-      "commit": "620a520f5029e14b57a0b58096c022e339b1857b",
+      "commit": "e03f1d590a8778f8b0d6aa232bf7d7406213fa37",
       "name": "dawn",
       "remote": "https://dawn.googlesource.com/dawn.git"
+    },
+    {
+      "build_file": "//bazel/external/jinja2:BUILD.bazel",
+      "commit": "c3027d884967773057bf74b957e3fea87e5df4d7",
+      "name": "jinja2",
+      "patch_cmds": [
+        "mkdir tmp_jinja2",
+        "mv * tmp_jinja2 || true",
+        "mv tmp_jinja2 jinja2",
+        "mv jinja2/BUILD.bazel ."
+      ],
+      "remote": "https://chromium.googlesource.com/chromium/src/third_party/jinja2"
+    },
+    {
+      "build_file": "//bazel/external/markupsafe:BUILD.bazel",
+      "commit": "4256084ae14175d38a3ff7d739dca83ae49ccec6",
+      "name": "markupsafe",
+      "patch_cmds": [
+        "mkdir tmp_markupsafe",
+        "mv * tmp_markupsafe || true",
+        "mv tmp_markupsafe markupsafe",
+        "mv markupsafe/BUILD.bazel ."
+      ],
+      "remote": "https://chromium.googlesource.com/chromium/src/third_party/markupsafe"
     },
     {
       "build_file": "//bazel/external/delaunator:BUILD.bazel",
@@ -20,8 +50,14 @@
       "remote": "https://android.googlesource.com/platform/external/dng_sdk.git"
     },
     {
+      "build_file": "//bazel/external/egl_registry:BUILD.bazel",
+      "commit": "b055c9b483e70ecd57b3cf7204db21f5a06f9ffe",
+      "name": "egl_registry",
+      "remote": "https://skia.googlesource.com/external/github.com/KhronosGroup/EGL-Registry"
+    },
+    {
       "build_file": "//bazel/external/expat:BUILD.bazel",
-      "commit": "8e49998f003d693213b538ef765814c7d21abada",
+      "commit": "6154446fccefbf3ca644894f598969113b0c7bcd",
       "name": "expat",
       "patches": [
         "//bazel/external/expat:config_files.patch"
@@ -30,7 +66,7 @@
     },
     {
       "build_file": "//bazel/external/freetype:BUILD.bazel",
-      "commit": "b91f75bd02db43b06d634591eb286d3eb0ce3b65",
+      "commit": "264b5fbf5b912b39f98d038bf75d39be0a73f21b",
       "name": "freetype",
       "patches": [
         "//bazel/external/freetype:config_files.patch"
@@ -39,7 +75,7 @@
     },
     {
       "build_file": "//bazel/external/harfbuzz:BUILD.bazel",
-      "commit": "31695252eb6ed25096893aec7f848889dad874bc",
+      "commit": "9cb1fee51069b206effb4736e443b038d230789d",
       "name": "harfbuzz",
       "patches": [
         "//bazel/external/harfbuzz:config_files.patch"
@@ -48,7 +84,7 @@
     },
     {
       "build_file": "//bazel/external/icu:BUILD.bazel",
-      "commit": "364118a1d9da24bb5b770ac3d762ac144d6da5a4",
+      "commit": "d578f2e8b7bd5938e21cfb6bf15c079e0aa5b738",
       "name": "icu",
       "patch_cmds": [
         "rm source/i18n/BUILD.bazel",
@@ -97,13 +133,19 @@
     },
     {
       "build_file": "//bazel/external/libjxl:BUILD.bazel",
-      "commit": "a205468bc5d3a353fb15dae2398a101dff52f2d3",
+      "commit": "332feb17d17311c748445f7ee75c4fb55cc38530",
       "name": "libjxl",
+      "patch_cmds": [
+        "rm -f lib/BUILD tools/BUILD"
+      ],
+      "patch_cmds_win": [
+        "del /f /q lib\\BUILD tools\\BUILD"
+      ],
       "remote": "https://chromium.googlesource.com/external/gitlab.com/wg1/jpeg-xl.git"
     },
     {
       "build_file": "//bazel/external/libpng:BUILD.bazel",
-      "commit": "4e3f57d50f552841550a36eabbb3fbcecacb7750",
+      "commit": "d5515b5b8be3901aac04e5bd8bd5c89f287bcd33",
       "name": "libpng",
       "remote": "https://skia.googlesource.com/third_party/libpng.git"
     },
@@ -120,6 +162,12 @@
       "remote": "https://chromium.googlesource.com/libyuv/libyuv.git"
     },
     {
+      "build_file": "//bazel/external/opengl_registry:BUILD.bazel",
+      "commit": "14b80ebeab022b2c78f84a573f01028c96075553",
+      "name": "opengl_registry",
+      "remote": "https://skia.googlesource.com/external/github.com/KhronosGroup/OpenGL-Registry"
+    },
+    {
       "build_file": "//bazel/external/perfetto:BUILD.bazel",
       "commit": "93885509be1c9240bc55fa515ceb34811e54a394",
       "name": "perfetto",
@@ -133,7 +181,7 @@
     },
     {
       "build_file": "//bazel/external/vulkanmemoryallocator:BUILD.bazel",
-      "commit": "a6bfc237255a6bac1513f7c1ebde6d8aed6b5191",
+      "commit": "eb744ea7a2b17040121b4bbb4d6f9e8a77e3cae7",
       "name": "vulkanmemoryallocator",
       "remote": "https://chromium.googlesource.com/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator"
     },
@@ -144,12 +192,12 @@
       "remote": "https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Cross"
     },
     {
-      "commit": "f88a2d766840fc825af1fc065977953ba1fa4a91",
+      "commit": "cb42dec3830d3ac67fa449ecdc0c0f73d5e74498",
       "name": "spirv_headers",
       "remote": "https://skia.googlesource.com/external/github.com/KhronosGroup/SPIRV-Headers.git"
     },
     {
-      "commit": "7d8d9e58c384949f1615c069d4c9346bf51b9738",
+      "commit": "1d0401cd2b68ae34cda9ff625bedd1be4ed6214a",
       "name": "spirv_tools",
       "remote": "https://skia.googlesource.com/external/github.com/KhronosGroup/SPIRV-Tools.git"
     },
@@ -161,19 +209,19 @@
     },
     {
       "build_file": "//bazel/external/vulkan_headers:BUILD.bazel",
-      "commit": "74d8a6cb930c68ef617b202c3ff3c59d919e086b",
+      "commit": "3c65a01745e4a1134d32b9c2c456472212dba16d",
       "name": "vulkan_headers",
       "remote": "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Headers"
     },
     {
       "build_file": "//bazel/external/vulkan_tools:BUILD.bazel",
-      "commit": "59f963ce1b1d16cc92137a241a0fe98d637d21f4",
+      "commit": "69ca4d4b6590ab32e7a398725bfc90f81e6338e6",
       "name": "vulkan_tools",
       "remote": "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Tools"
     },
     {
       "build_file": "//bazel/external/vulkan_utility_libraries:BUILD.bazel",
-      "commit": "20fb10eb1ec08ccd5cacec32b7df1b0e99e48a0c",
+      "commit": "666fdaa0f87b9d49ae576473227b4b4cf428ba7e",
       "name": "vulkan_utility_libraries",
       "remote": "https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries"
     },
@@ -197,12 +245,19 @@
       "remote": "https://skia.googlesource.com/external/github.com/google/brotli.git"
     },
     {
-      "commit": "526428fa2488f4b10406f697108659bc1619a97b",
+      "commit": "7f06dec0efe9f5c51b08761baff62dde5c4d7576",
       "name": "abseil_cpp",
+      "patch_cmds": [
+        "find . -name BUILD.bazel -type f -exec sed -i.bak -e '/do_not_use_for_gloop_visibility_only/d' {} +",
+        "find . -name '*.bak' -type f -delete"
+      ],
+      "patch_cmds_win": [
+        "Get-ChildItem -Recurse -Filter BUILD.bazel | ForEach-Object { $p = $_.FullName; (Get-Content $p) -notmatch 'do_not_use_for_gloop_visibility_only' | Set-Content -Force -Encoding Ascii $p }"
+      ],
       "remote": "https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp"
     },
     {
-      "commit": "424360251cdcfc314cfc528f53c872ecd63af0f0",
+      "commit": "457c891775a7397bdb0376bb1031e6e027af1c48",
       "name": "highway",
       "remote": "https://chromium.googlesource.com/external/github.com/google/highway.git"
     }

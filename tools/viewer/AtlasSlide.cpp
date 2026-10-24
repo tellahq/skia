@@ -13,10 +13,12 @@
 #include "include/core/SkSpan.h"
 #include "include/core/SkSurface.h"
 #include "include/utils/SkTextUtils.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkPaintPriv.h"
+#include "src/core/SkRandom.h"
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 typedef void (*DrawAtlasProc)(SkCanvas*, SkImage*, SkSpan<const SkRSXform>, SkSpan<const SkRect>,
                               SkSpan<const SkColor>, const SkRect*, const SkSamplingOptions&,
@@ -131,7 +133,7 @@ class DrawAtlasDrawable : public SkDrawable {
 
         SkRSXform asRSXform() const {
             return SkRSXform::MakeFromRadians(fScale, fRadian, fCenter.x(), fCenter.y(),
-                                              SkScalarHalf(kCellSize), SkScalarHalf(kCellSize));
+                                              kCellSize / 2.f, kCellSize / 2.f);
         }
     };
 
@@ -140,8 +142,8 @@ class DrawAtlasDrawable : public SkDrawable {
     static constexpr size_t N = 256;
 
     sk_sp<SkImage> fAtlas;
-    Rec         fRec[N];
-    SkRect      fTex[N];
+    std::array<Rec, N> fRec;
+    std::array<SkRect, N> fTex;
     SkRect      fBounds;
     bool        fUseColors;
 
@@ -180,7 +182,7 @@ public:
 
 protected:
     void onDraw(SkCanvas* canvas) override {
-        SkRSXform xform[N];
+        std::array<SkRSXform, N> xform;
         SkColor colors[N];
 
         for (size_t i = 0; i < N; ++i) {

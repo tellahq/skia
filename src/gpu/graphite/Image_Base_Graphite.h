@@ -9,9 +9,12 @@
 #define skgpu_graphite_Image_Base_Graphite_DEFINED
 
 #include "include/core/SkRecorder.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkSpan.h"
 #include "include/gpu/GpuTypes.h"
-#include "include/private/base/SkTArray.h"
-#include "src/base/SkSpinlock.h"
+#include "include/private/SkPixelStorage.h"
+#include "include/private/SkTArray.h"
+#include "src/core/SkSpinlock.h"
 #include "src/image/SkImage_Base.h"
 
 #include <string_view>
@@ -26,6 +29,7 @@ class DrawContext;
 class Image;
 class Recorder;
 class TextureProxy;
+class TextureProxyView;
 
 class Image_Base : public SkImage_Base {
 public:
@@ -33,10 +37,23 @@ public:
 
     // Must be called at the time of recording an action that reads from the image, be it a draw
     // or a copy operation. `drawContext` can be null if the "use" is scoped by a draw.
-    void notifyInUse(Recorder*, DrawContext* drawContext) const;
+    void notifyInUse(Recorder* recorder, DrawContext* drawContext) const {
+        this->notifyInUse(recorder, drawContext, /*unlinkDevices=*/false);
+    }
 
     // Returns true if this image is linked to a device that may render their shared texture(s).
     bool isDynamic() const;
+
+    // Switches the image's proxies to be non-budgeted and instantiates them as non-shareable.
+    // Records any linked tasks (e.g. isDynamic() returned true) into the root task list of the
+    // recorder, and breaks the link between the scratch Device(s) and the returned image.
+    //
+    // Proxies that are already non-budgeted and non-shareable are unmodified. Scratch or shareable
+    // proxies that are instantiated cannot be made non-budgeted, in which case they are copied.
+    //
+    // If possible, this modifies the calling Image, but since it can return a copy, the usage
+    // pattern should always be "image = image->makeNonBudgeted(recorder)".
+    sk_sp<Image_Base> makeNonBudgeted(Recorder* recorder);
 
     // Always copy this image, even if 'subset' and mipmapping match this image exactly.
     // The base implementation performs all copies as draws.
@@ -46,6 +63,9 @@ public:
                                    Mipmapped,
                                    SkBackingFit,
                                    std::string_view label) const;
+
+    virtual SkSpan<TextureProxyView> textureProxyViews() = 0;
+    virtual SkSpan<const TextureProxyView> textureProxyViews() const = 0;
 
     // From SkImage.h
     bool isValid(SkRecorder* recorder) const final {
@@ -94,7 +114,7 @@ public:
                                            ReadPixelsContext) const override;
 
 protected:
-    Image_Base(const SkImageInfo& info, uint32_t uniqueID);
+    Image_Base(const SkImageInfo& info, uint32_t uniqueID, sk_sp<SkPixelStorage> backingStorage);
 
     // If the passed-in image is linked with Devices that modify its texture, copy the links to
     // this Image. This is used when a new Image is created that shares the same texture proxy as
@@ -105,7 +125,16 @@ protected:
     // can only be called before the Image has been returned from a factory function.
     void linkDevice(sk_sp<Device>);
 
+    // Notifies any linked devices as in-use w/o a DrawContext to push tasks to the root task list
+    // and then removes all links so the image is no longer dynamic.
+    void unlinkDevices(Recorder* recorder) {
+        this->notifyInUse(recorder, /*drawContext=*/nullptr, /*unlinkDevices=*/true);
+        SkASSERT(!this->isDynamic());
+    }
+
 private:
+    void notifyInUse(Recorder*, DrawContext* drawContext, bool unlinkDevices) const;
+
     // Devices are flushed in notifyImageInUse(). If a linked device is uniquely held by the image
     // or if it's marked as immutable, it will be unlinked (allowing it to be destroyed eventually).
     // If all linked devices are removed, this array will become empty. Other than initialization,

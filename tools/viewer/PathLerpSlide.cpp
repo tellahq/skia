@@ -1,14 +1,9 @@
 /*
- * Copyright 2024 Google Inc.
+ * Copyright 2024 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
-
-#include <cmath>
-#include <utility>
-#include <deque>
-#include <vector>
 
 #include "include/core/SkCanvas.h"
 #include "include/core/SkCubicMap.h"
@@ -19,14 +14,20 @@
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
+#include "include/private/SkAssert.h"
 #include "include/private/SkPathRef.h"
-#include "include/private/base/SkAssert.h"
 #include "include/utils/SkParsePath.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPathPriv.h"
 #include "tools/viewer/Slide.h"
 
 #include "imgui.h"
+
+#include <array>
+#include <cmath>
+#include <deque>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -680,7 +681,7 @@ private:
     float                     fCurrentProgress  = 0; // Interpolation progress [0..1]
 
     // UI stuff
-    const PathDesc*           fSelectedPaths[2] = {&gSamplePaths[0], &gSamplePaths[1]};
+    std::array<const PathDesc*, 2> fSelectedPaths = {&gSamplePaths[0], &gSamplePaths[1]};
     bool                      fDraggingProgress = false;
     bool                      fShowVertices     = false;
     bool                      fShowSlider       = false;

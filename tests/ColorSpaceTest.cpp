@@ -12,13 +12,14 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTemplates.h"
 #include "modules/skcms/skcms.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "tests/Test.h"
 #include "tools/Resources.h"
 
+#include <array>
 #include <climits>
 #include <cstring>
 #include <memory>
@@ -39,7 +40,7 @@ static void test_space(skiatest::Reporter* r, SkColorSpace* space,
 
     skcms_Matrix3x3 mat;
     space->toXYZD50(&mat);
-    const float* ref[3] = { red, green, blue };
+    std::array<const float*, 3> ref = {red, green, blue};
     for (int i = 0; i < 3; ++i) {
         REPORTER_ASSERT(r, almost_equal(ref[i][0], mat.vals[0][i]));
         REPORTER_ASSERT(r, almost_equal(ref[i][1], mat.vals[1][i]));

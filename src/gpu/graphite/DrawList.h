@@ -9,10 +9,10 @@
 
 #include "src/gpu/graphite/DrawListBase.h"
 
-#include "include/private/base/SkDebug.h"
-#include "src/base/SkBlockAllocator.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkTBlockList.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
+#include "src/core/SkBlockAllocator.h"
+#include "src/core/SkTBlockList.h"
 #include "src/gpu/graphite/ContextUtils.h"
 #include "src/gpu/graphite/DrawCommands.h"
 #include "src/gpu/graphite/DrawListTypes.h"
@@ -82,10 +82,13 @@ public:
             SkEnumBitMask<DstUsage> dstUsage,
             BarrierType barrierBeforeDraws,
             PipelineDataGatherer* gatherer,
+            StorageContext* storageContext,
             const StrokeStyle* stroke,
-            const Layer* latestDepthLayer) override;
+            Layer*) override;
 
     std::unique_ptr<DrawPass> snapDrawPass(Recorder* recorder,
+                                           StorageContext* storageContext,
+                                           DrawContext* drawContext,
                                            sk_sp<TextureProxy> target,
                                            const SkImageInfo& targetInfo,
                                            DstReadStrategy dstReadStrategy) override;

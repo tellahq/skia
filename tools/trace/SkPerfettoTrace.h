@@ -20,7 +20,6 @@ PERFETTO_DEFINE_CATEGORIES();
 class SkPerfettoTrace : public SkEventTracer {
 public:
     SkPerfettoTrace();
-    ~SkPerfettoTrace() override;
 
     SkEventTracer::Handle addTraceEvent(char phase,
                                         const uint8_t* categoryEnabledFlag,
@@ -61,6 +60,8 @@ private:
     void openNewTracingSession(const std::string& baseFileName);
     void closeTracingSession();
 
+    void onExit() override { this->closeTracingSession(); }
+
     /** Overloaded private methods to initiate a trace event with 0-2 arguments. Perfetto supports
      * adding an arbitrary number of debug annotations or arguments, but the existing Skia trace
      * structure only supports 0-2 so that is all we accommodate.
@@ -71,6 +72,9 @@ private:
     void triggerTraceEvent(const uint8_t* categoryEnabledFlag, const char* eventName,
                            const char* arg1Name, const uint8_t& arg1Type, const uint64_t& arg1Val,
                            const char* arg2Name, const uint8_t& arg2Type, const uint64_t& arg2Val);
+
+    void triggerTraceCount(const uint8_t* categoryEnabledFlag, const char* eventName,
+                           const uint8_t& arg1Type, const uint64_t& arg1Val);
 };
 
 #endif

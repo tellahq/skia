@@ -21,8 +21,8 @@
 #include "include/core/SkSurface.h"
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/gpu/ganesh/GrTypes.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkMacros.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkMacros.h"
 #include "src/core/SkDevice.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/gpu/ganesh/ClipStack.h"
@@ -222,7 +222,8 @@ public:
 
     void drawCoverageMask(const SkSpecialImage* mask, const SkMatrix& maskToDevice,
                           const SkSamplingOptions& localToDevice, const SkPaint& paint) override;
-    bool drawBlurredRRect(const SkRRect&, const SkPaint&, float deviceSigma) override;
+    bool drawBlurredRRect(const SkRRect&, const SkPaint&,
+                          SkV2 localSigma, float deviceSigma) override;
 
     void drawEdgeAAQuad(const SkRect& rect, const SkPoint clip[4], SkCanvas::QuadAAFlags aaFlags,
                         const SkColor4f& color, SkBlendMode mode) override;

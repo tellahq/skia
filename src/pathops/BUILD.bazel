@@ -83,8 +83,8 @@ skia_cc_library(
     features = ["layering_check"],
     visibility = ["//:__pkg__"],
     deps = [
-        "//src/base",
         "//src/core",
         "//src/core:core_priv",
+        "//src/partition_alloc:raw_ptr",
     ],
 )

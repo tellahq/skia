@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -24,7 +24,8 @@ GR_NORETAIN_BEGIN
 sk_sp<GrMtlCommandBuffer> GrMtlCommandBuffer::Make(id<MTLCommandQueue> queue) {
     id<MTLCommandBuffer> mtlCommandBuffer;
 #if GR_METAL_SDK_VERSION >= 230
-    if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+    // rust-skia: `___isPlatformVersionAtLeast` linker error.
+    if (false /* @available(macOS 11.0, iOS 14.0, tvOS 14.0, *) */) {
         MTLCommandBufferDescriptor* desc = [[MTLCommandBufferDescriptor alloc] init];
         desc.errorOptions = MTLCommandBufferErrorOptionEncoderExecutionStatus;
         mtlCommandBuffer = [queue commandBufferWithDescriptor:desc];

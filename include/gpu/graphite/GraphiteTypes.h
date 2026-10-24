@@ -190,6 +190,12 @@ struct SubmitInfo {
     MarkFrameBoundary fMarkBoundary = MarkFrameBoundary::kNo;
     uint64_t fFrameID = 0;
 
+    // Optional finish proc that is invoked when all GPU work submitted by this call has
+    // completed. If there is no pending work to submit, the proc is attached to the most
+    // recently outstanding GPU submission, or invoked immediately if the GPU is idle.
+    GpuFinishedProc fFinishedProc = nullptr;
+    GpuFinishedContext fFinishedContext = nullptr;
+
     constexpr SubmitInfo() = default;
 
     constexpr SubmitInfo(SyncToCpu sync)
@@ -260,8 +266,7 @@ enum DrawTypeFlags : uint16_t {
 
     // kDrawVertices should be used to generate Pipelines that use the following RenderSteps:
     //    VerticesRenderStep[*] for:
-    //        [Tris], [TrisTexCoords], [TrisColor], [TrisColorTexCoords],
-    //        [Tristrips], [TristripsTexCoords], [TristripsColor], [TristripsColorTexCoords]
+    //        [Pos], [PosTexCoords], [PosColor], [PosColorTexCoords],
     kDrawVertices     = 1 << 5,
 
     // kCircularArc renders filled circular arcs, with or without the center included, and
@@ -291,7 +296,7 @@ enum DrawTypeFlags : uint16_t {
     // This draw type covers all the methods Skia uses to draw drop shadows. It can be used to
     // generate Pipelines which, as part of their labels, have:
     //     the AnalyticBlurRenderStep
-    //     VerticesRenderStep[TrisColor] with a GaussianColorFilter
+    //     VerticesRenderStep[PosColor] with a GaussianColorFilter
     // For this draw type the PaintOptions parameter to Precompile() will be ignored.
     kDropShadows      = 1 << 11,
 
@@ -301,7 +306,11 @@ enum DrawTypeFlags : uint16_t {
     //    AnalyticAndAtlasClip
     kAnalyticClip     = 1 << 12,
 
-    kLast = kAnalyticClip,
+    kDrawMesh         = 1 << 13,
+
+    kSparseStrips     = 1 << 14,
+
+    kLast             = kSparseStrips,
 };
 
 } // namespace skgpu::graphite

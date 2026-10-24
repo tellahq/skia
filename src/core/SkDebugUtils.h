@@ -8,9 +8,10 @@
 #ifndef SkDebugUtils_DEFINED
 #define SkDebugUtils_DEFINED
 
+#include "include/core/SkFourByteTag.h"
 #include "include/core/SkTileMode.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
 
 #include <array>
 #include <cstdint>
@@ -30,8 +31,10 @@ inline void SkDumpBuffer(uint8_t const* const buffer, int w, int h, int rowBytes
                          bool dumpActualValues = false) {
     SkASSERT(buffer);
 
-    static constexpr char shades[] = {'0', '1', '2', '3', '4', '5', '6', '7',
-                                      '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+    static constexpr auto shades = std::to_array<char>({
+        '0', '1', '2', '3', '4', '5', '6', '7',
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
+    });
 
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
@@ -50,6 +53,10 @@ inline void SkDumpBuffer(uint8_t const* const buffer, int w, int h, int rowBytes
 #else
 inline void SkDumpBuffer(uint8_t*, int, int, int) {}
 #endif
+
+static inline void SkDumpTag(SkFourByteTag tag) {
+    SkDebugf("%c%c%c%c", (char)(tag >> 24), (char)(tag >> 16) & 0xFF, (char)(tag >> 8) & 0xFF, (char)tag & 0xFF);
+}
 
 
 #endif // SkDebugUtils_DEFINED

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -12,9 +12,9 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkYUVAInfo.h"
+#include "include/private/SkAssert.h"
 #include "include/private/SkSLSampleUsage.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTo.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/core/SkSLTypeShared.h"
 #include "src/core/SkYUVAInfoLocation.h"
@@ -71,7 +71,7 @@ std::unique_ptr<GrFragmentProcessor> GrYUVtoRGBEffect::Make(const GrYUVATextureP
     }
 
     bool snap[2] = {false, false};
-    std::unique_ptr<GrFragmentProcessor> planeFPs[SkYUVAInfo::kMaxPlanes];
+    std::array<std::unique_ptr<GrFragmentProcessor>, SkYUVAInfo::kMaxPlanes> planeFPs;
     for (int i = 0; i < numPlanes; ++i) {
         bool useSubset = SkToBool(subset);
         GrSurfaceProxyView view = yuvaProxies.makeView(i);
@@ -208,7 +208,7 @@ std::unique_ptr<GrFragmentProcessor> GrYUVtoRGBEffect::Make(const GrYUVATextureP
         }
     }
     std::unique_ptr<GrFragmentProcessor> fp(
-            new GrYUVtoRGBEffect(planeFPs,
+            new GrYUVtoRGBEffect(planeFPs.data(),
                                  numPlanes,
                                  yuvaProxies.yuvaLocations(),
                                  snap,

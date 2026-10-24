@@ -16,19 +16,20 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/ports/SkFontMgr_android.h"
-#include "include/private/base/SkFixed.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTDArray.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkTSearch.h"
+#include "include/private/SkFixed.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTDArray.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkFontDescriptor.h"
 #include "src/core/SkOSFile.h"
 #include "src/core/SkTHash.h"
+#include "src/core/SkTSearch.h"
 #include "src/core/SkTypefaceCache.h"
 #include "src/ports/SkFontMgr_android_parser.h"
 #include "src/ports/SkTypeface_proxy.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 
 using namespace skia_private;
@@ -535,9 +536,11 @@ private:
 };
 
 #ifdef SK_DEBUG
-static char const * const gSystemFontUseStrings[] = {
-    "OnlyCustom", "PreferCustom", "PreferSystem"
-};
+static constexpr auto gSystemFontUseStrings = std::to_array<const char*>({
+        "OnlyCustom",
+        "PreferCustom",
+        "PreferSystem",
+});
 #endif
 
 }  // namespace

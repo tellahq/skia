@@ -30,16 +30,15 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkTextBlob.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkLog.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTo.h"
+#include "include/gpu/graphite/Context.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkLog.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTo.h"
 #include "include/utils/SkPaintFilterCanvas.h"
-#include "src/base/SkBase64.h"
-#include "src/base/SkTLazy.h"
-#include "src/base/SkTSort.h"
-#include "src/base/SkUTF.h"
+#include "src/capture/SkCapture.h"
 #include "src/core/SkAutoPixmapStorage.h"
+#include "src/core/SkBase64.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkLRUCache.h"
 #include "src/core/SkMD5.h"
@@ -47,8 +46,11 @@
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkScan.h"
 #include "src/core/SkStringUtils.h"
+#include "src/core/SkTLazy.h"
+#include "src/core/SkTSort.h"
 #include "src/core/SkTaskGroup.h"
 #include "src/core/SkTextBlobPriv.h"
+#include "src/core/SkUTF.h"
 #include "src/image/SkImage_Base.h"
 #include "src/sksl/SkSLCompiler.h"
 #include "src/sksl/SkSLString.h"
@@ -58,7 +60,7 @@
 #include "src/utils/SkShaderUtils.h"
 #include "tools/CodecUtils.h"
 #include "tools/DecodeUtils.h"
-#include "tools/DeserialProcsUtils.h"
+#include "tools/ProcsUtils.h"
 #include "tools/Resources.h"
 #include "tools/RuntimeBlendUtils.h"
 #include "tools/SkMetaData.h"
@@ -115,6 +117,7 @@
 
 #if defined(SK_GRAPHITE)
 #include "include/gpu/graphite/Context.h"
+#include "include/gpu/graphite/Image.h"
 #include "include/gpu/graphite/Recorder.h"
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/GlobalCache.h"
@@ -188,39 +191,101 @@ Application* Application::Create(int argc, char** argv, void* platformData) {
     return new Viewer(argc, argv, platformData);
 }
 
+static DEFINE_bool(enable_capture, false, "Enable capture");
+
 static DEFINE_string(slide, "", "Start on this sample.");
 static DEFINE_bool(list, false, "List samples?");
 
-#ifdef SK_GL
-#define GL_BACKEND_STR ", \"gl\""
+// See also get_backend_type
+#if defined(SK_GANESH)
+#   if defined(SK_GL)
+#       define GANESH_GL_STR ", \"gl\""
+#   else
+#       define GANESH_GL_STR
+#   endif
+#   if defined(SK_VULKAN) && (defined(SK_BUILD_FOR_UNIX) || defined(SK_BUILD_FOR_WIN))
+#       define GANESH_VK_STR ", \"vk\""
+#   else
+#       define GANESH_VK_STR
+#   endif
+#   if defined(SK_METAL) && (defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS))
+#       define GANESH_MTL_STR ", \"mtl\""
+#   else
+#       define GANESH_MTL_STR
+#   endif
+#   if defined(SK_DIRECT3D) && defined(SK_BUILD_FOR_WIN)
+#       define GANESH_D3D_STR ", \"d3d\""
+#   else
+#       define GANESH_D3D_STR
+#   endif
+#   if defined(SK_GL) && defined(SK_ANGLE) && (defined(SK_BUILD_FOR_WIN) || defined(SK_BUILD_FOR_MAC))
+#       define GANESH_ANGLE_STR ", \"angle\""
+#   else
+#       define GANESH_ANGLE_STR
+#    endif
 #else
-#define GL_BACKEND_STR
+#   define GANESH_GL_STR
+#   define GANESH_VK_STR
+#   define GANESH_MTL_STR
+#   define GANESH_D3D_STR
+#   define GANESH_ANGLE_STR
 #endif
-#ifdef SK_VULKAN
-#define VK_BACKEND_STR ", \"vk\""
-#else
-#define VK_BACKEND_STR
-#endif
-#ifdef SK_METAL
-#define MTL_BACKEND_STR ", \"mtl\""
-#else
-#define MTL_BACKEND_STR
-#endif
-#ifdef SK_DIRECT3D
-#define D3D_BACKEND_STR ", \"d3d\""
-#else
-#define D3D_BACKEND_STR
-#endif
-#ifdef SK_DAWN
-#define DAWN_BACKEND_STR ", \"dawn\""
-#else
-#define DAWN_BACKEND_STR
-#endif
-#define BACKENDS_STR_EVALUATOR(sw, gl, vk, mtl, d3d, dawn) sw gl vk mtl d3d dawn
-#define BACKENDS_STR BACKENDS_STR_EVALUATOR( \
-    "\"sw\"", GL_BACKEND_STR, VK_BACKEND_STR, MTL_BACKEND_STR, D3D_BACKEND_STR, DAWN_BACKEND_STR)
 
-static DEFINE_string2(backend, b, "sw", "Backend to use. Allowed values are " BACKENDS_STR ".");
+#if defined(SK_GRAPHITE)
+#   if defined(SK_VULKAN) && (defined(SK_BUILD_FOR_UNIX) || defined(SK_BUILD_FOR_WIN))
+#       define GRAPHITE_VK_STR ", \"grvk\""
+#   else
+#       define GRAPHITE_VK_STR
+#   endif
+#   if defined(SK_METAL) && (defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS))
+#       define GRAPHITE_MTL_STR ", \"grmtl\""
+#   else
+#       define GRAPHITE_MTL_STR
+#   endif
+#   if defined(SK_DAWN)
+#       if defined(SK_BUILD_FOR_WIN)
+#           define GRAPHITE_DAWN_D3D_STR ", \"grdawn_d3d11\", \"grdawn_d3d12\""
+#       else
+#           define GRAPHITE_DAWN_D3D_STR
+#       endif
+#       if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
+#           define GRAPHITE_DAWN_MTL_STR ", \"grdawn_metal\""
+#       else
+#           define GRAPHITE_DAWN_MTL_STR
+#       endif
+#       if defined(SK_BUILD_FOR_UNIX) || defined(SK_BUILD_FOR_ANDROID)
+#           define GRAPHITE_DAWN_GLES_VK_STR ", \"grdawn_gles\", \"grdawn_vk\""
+#       else
+#           define GRAPHITE_DAWN_GLES_VK_STR
+#       endif
+#   else
+#       define GRAPHITE_DAWN_D3D_STR
+#       define GRAPHITE_DAWN_MTL_STR
+#       define GRAPHITE_DAWN_GLES_VK_STR
+#   endif
+#else
+#   define GRAPHITE_VK_STR
+#   define GRAPHITE_MTL_STR
+#   define GRAPHITE_DAWN_D3D_STR
+#   define GRAPHITE_DAWN_MTL_STR
+#   define GRAPHITE_DAWN_GLES_VK_STR
+#endif
+
+#define BACKENDS_STR_EVALUATOR(sw, ganesh, graphite) \
+    sw ganesh graphite
+
+#define GANESH_BACKENDS \
+    GANESH_GL_STR GANESH_VK_STR GANESH_MTL_STR GANESH_D3D_STR GANESH_ANGLE_STR
+
+#define GRAPHITE_BACKENDS \
+    GRAPHITE_VK_STR GRAPHITE_MTL_STR GRAPHITE_DAWN_D3D_STR GRAPHITE_DAWN_MTL_STR GRAPHITE_DAWN_GLES_VK_STR
+
+#define BACKENDS_STR BACKENDS_STR_EVALUATOR( \
+    "\"sw\"", \
+    GANESH_BACKENDS, \
+    GRAPHITE_BACKENDS )
+
+static DEFINE_string2(backend, b, "sw", "Backend to use. Allowed values are " BACKENDS_STR);
 
 static DEFINE_int(msaa, 1, "Number of subpixel samples. 0 for no HW antialiasing.");
 static DEFINE_bool(dmsaa, false, "Use internal MSAA to render to non-MSAA surfaces?");
@@ -538,15 +603,19 @@ static const Window::BackendType kSupportedBackends[] = {
 #endif
 
 #if defined(SK_DAWN) && defined(SK_GRAPHITE)
-#if defined(SK_BUILD_FOR_WIN)
+#if defined(SK_DAWN_HAS_D3D11)
         sk_app::Window::BackendType::kGraphiteDawnD3D11,
+#endif
+#if defined(SK_DAWN_HAS_D3D12)
         sk_app::Window::BackendType::kGraphiteDawnD3D12,
 #endif
-#if defined(SK_BUILD_FOR_MAC) || defined(SK_BUILD_FOR_IOS)
+#if defined(SK_DAWN_HAS_METAL)
         sk_app::Window::BackendType::kGraphiteDawnMetal,
 #endif
-#if defined(SK_BUILD_FOR_UNIX) || defined(SK_BUILD_FOR_ANDROID)
+#if defined(SK_DAWN_HAS_OPENGLES)
         sk_app::Window::BackendType::kGraphiteDawnOpenGLES,
+#endif
+#if defined(SK_DAWN_HAS_VULKAN)
         sk_app::Window::BackendType::kGraphiteDawnVulkan,
 #endif
 #endif
@@ -616,6 +685,7 @@ Viewer::Viewer(int argc, char** argv, void* platformData)
         : fCurrentSlide(-1)
         , fRefresh(false)
         , fSaveToSKP(false)
+        , fToggleCapture(false)
         , fShowSlideDimensions(false)
         , fShowImGuiDebugWindow(false)
         , fShowSlidePicker(false)
@@ -698,6 +768,7 @@ Viewer::Viewer(int argc, char** argv, void* platformData)
 #if defined(SK_GRAPHITE)
     skiatest::graphite::TestOptions gto;
     CommonFlags::SetTestOptions(&gto);
+    gto.fContextOptions.fEnableCapture = FLAGS_enable_capture;
     gto.fOptionsPriv.fPathRendererStrategy = get_path_renderer_strategy_type(FLAGS_pathstrategy[0]);
     if (FLAGS_msaa <= 0) {
         gto.fContextOptions.fInternalMultisampleCount = skgpu::graphite::SampleCount::k1;
@@ -852,6 +923,10 @@ Viewer::Viewer(int argc, char** argv, void* platformData)
         fSaveToSKP = true;
         fWindow->inval();
     });
+    fCommands.addCommand('T', "IO", "Toggle capturing", [this]() {
+        fToggleCapture = true;
+        fWindow->inval();
+    });
     fCommands.addCommand('&', "Overlays", "Show slide dimensions", [this]() {
         fShowSlideDimensions = !fShowSlideDimensions;
         fWindow->inval();
@@ -993,7 +1068,7 @@ Viewer::Viewer(int argc, char** argv, void* platformData)
     fCommands.addCommand('a', "Transform", "Toggle Animation", [this]() {
         fAnimTimer.togglePauseResume();
     });
-    fCommands.addCommand('u', "GUI", "Zoom UI", [this]() {
+    fCommands.addCommand('u', "GUI", "Zoom Stats UI", [this]() {
         fZoomUI = !fZoomUI;
         fStatsLayer.setDisplayScale((fZoomUI ? 2.0f : 1.0f) * fWindow->scaleFactor());
         fWindow->inval();
@@ -1895,17 +1970,59 @@ public:
     Viewer::SkFontFields* fFontOverrides;
 };
 
-static SkSerialProcs serial_procs_using_png() {
-    SkSerialProcs sProcs;
-    sProcs.fImageProc = [](SkImage* img, void*) -> SkSerialReturnType {
-#if defined(SK_CODEC_ENCODES_PNG_WITH_RUST)
-        return SkPngRustEncoder::Encode(
-                as_IB(img)->directContext(), img, SkPngRustEncoder::Options{});
+
+void Viewer::checkCaptureAndSerialize() {
+    if (!fToggleCapture) {
+        return;
+    }
+    fToggleCapture = false;
+
+#if defined(SK_GRAPHITE)
+    skgpu::graphite::Context* gctx = fWindow->graphiteContext();
+    if (!gctx) {
+        SKIA_LOG_D(
+                "Failed to acquire graphite context. Capturing is only supported on the graphite "
+                "backend\n");
+        return;
+    }
+
+    if (fCurrentlyCapturing) {
+        SKIA_LOG_I("Ending Capture\n");
+        sk_sp<SkCapture> capt = gctx->endCapture();
+
+        if (!capt) {
+            SKIA_LOG_W("gctx->endCapture() returned null.\n");
+            return;
+        }
+
+        sk_sp<SkData> data = capt->serializeCapture();
+        if (!data) {
+            SKIA_LOG_W("capt->serializeCapture() returned null.\n");
+            return;
+        }
+
+        // TODO(b/334925727) allow user to specify a path
+        SkFILEWStream stream("sample_app.capt");
+        if (!stream.isValid()) {
+            SkLog(SkLogPriority::kDebug,
+                  "Error: Failed to open SkFILEWStream for 'sample_app.capt'.\n");
+            return;
+        }
+
+        if (stream.write(data->data(), data->size())) {
+            SKIA_LOG_D("Successfully wrote capture to 'sample_app.capt'.\n");
+        } else {
+            SKIA_LOG_D("Failed to write data to the stream.\n");
+        }
+        fCurrentlyCapturing = false;
+    } else {
+        SKIA_LOG_I("Starting Capture\n");
+        gctx->startCapture();
+        fCurrentlyCapturing = true;
+    }
 #else
-        return SkPngEncoder::Encode(as_IB(img)->directContext(), img, SkPngEncoder::Options{});
+    SKIA_LOG_D("Capture is currently only supported on the Graphite backend.\n");
 #endif
-    };
-    return sProcs;
 }
 
 void Viewer::drawSlide(SkSurface* surface) {
@@ -1934,10 +2051,12 @@ void Viewer::drawSlide(SkSurface* surface) {
         fSlides[fCurrentSlide]->draw(recorderCanvas);
         sk_sp<SkPicture> picture(recorder.finishRecordingAsPicture());
         SkFILEWStream stream("sample_app.skp");
-        SkSerialProcs sProcs = serial_procs_using_png();
+        SkSerialProcs    sProcs = ToolUtils::default_serial_procs();
         picture->serialize(&stream, &sProcs);
         fSaveToSKP = false;
     }
+
+    checkCaptureAndSerialize();
 
     // Grab some things we'll need to make surfaces (for tiling or general offscreen rendering)
     SkColorType colorType;
@@ -2049,10 +2168,10 @@ void Viewer::drawSlide(SkSurface* surface) {
 
     if (recorderRestoreCanvas) {
         sk_sp<SkPicture> picture(recorder.finishRecordingAsPicture());
-        SkSerialProcs sProcs = serial_procs_using_png();
+        SkSerialProcs sProcs = ToolUtils::default_serial_procs();
         auto data = picture->serialize(&sProcs);
         slideCanvas = recorderRestoreCanvas;
-        SkDeserialProcs dProcs = ToolUtils::get_default_skp_deserial_procs();
+        SkDeserialProcs dProcs = ToolUtils::default_deserial_procs();
         slideCanvas->drawPicture(SkPicture::MakeFromData(data.get(), &dProcs));
     }
 
@@ -2066,6 +2185,17 @@ void Viewer::drawSlide(SkSurface* surface) {
         fLastImage = offscreenSurface->makeImageSnapshot();
 
         SkCanvas* canvas = surface->getCanvas();
+
+#if defined(SK_GRAPHITE)
+        // Convert directly to a texture so that we aren't caching every frame in the default
+        // TestingImageProvider (which holds on to a lot of images).
+        // For Ganesh, the gen-id listening will automatically recycle the backing texture so no
+        // intervention is required.
+        if (!fLastImage->isTextureBacked() && canvas->recorder()) {
+            fLastImage = SkImages::TextureFromImage(canvas->recorder(), std::move(fLastImage));
+        }
+#endif
+
         SkPaint paint;
         paint.setBlendMode(SkBlendMode::kSrc);
         SkSamplingOptions sampling;
@@ -2560,6 +2690,7 @@ void Viewer::drawImGui() {
                                 PathRendererStrategy::kRasterAtlas,
                                 PathRendererStrategy::kTessellation,
                                 PathRendererStrategy::kTessellationAndSmallAtlas,
+                                PathRendererStrategy::kCPUSparseStripsMSAA8,
                         };
                         for (size_t i = 0; i < std::size(strategies); ++i) {
                             if (skgpu::graphite::RendererProvider::IsSupported(
@@ -3062,7 +3193,8 @@ void Viewer::drawImGui() {
                             CachedShader& entry(fCachedShaders.push_back());
                             entry.fKey = nullptr;
                             entry.fKeyString = SkStringPrintf("#%-3d %s",
-                                                              index++, pipeline->getLabel());
+                                                              index++,
+                                                              pipeline->getLabel().c_str());
 
                             if (sksl) {
                                 entry.fShader[CachedShader::kVertexIndex].fText =
@@ -3527,7 +3659,7 @@ void Viewer::updateUIState() {
     }
 
     SkDynamicMemoryWStream memStream;
-    SkJSONWriter writer(&memStream);
+    SkJSONWriter writer(&memStream, ToolUtils::default_serial_procs());
     writer.beginArray();
 
     // Slide state

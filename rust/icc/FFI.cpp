@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Google LLC.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,56 +11,30 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <type_traits>
-#include <vector>
 
 namespace rust_icc {
 
-bool ApproximateCurveWrapper(rust::Slice<const uint16_t> table,
-                             TransferFunction& out_approx,
-                             float& out_max_error) {
-    if (table.empty()) {
+static constexpr uint64_t kMaxGridPoints = 350000000;
+
+// Validate grid point dimensions against max limits at the bridge boundary.
+static bool ValidateGridPoints(const uint8_t grid_points[4], uint32_t active_channels) {
+    if (active_channels < 1 || active_channels > 4) {
         return false;
     }
 
-    // moxcms stores TRC curve entries as native-endian uint16_t values
-    // (read via u16::from_be_bytes in the Rust reader).  skcms_Curve::table_16
-    // expects big-endian packed bytes (two bytes per entry, most-significant
-    // byte first).  Convert here so that skcms_ApproximateCurve receives
-    // correctly-ordered data on little-endian platforms.
-    std::vector<uint8_t> be_bytes(table.size() * 2);
-    for (size_t i = 0; i < table.size(); ++i) {
-        be_bytes[2 * i]     = static_cast<uint8_t>(table[i] >> 8);
-        be_bytes[2 * i + 1] = static_cast<uint8_t>(table[i] & 0xFF);
+    uint64_t total_grid_points = 1;
+    for (uint32_t i = 0; i < active_channels; ++i) {
+        if (grid_points[i] < 2) {
+            return false;
+        }
+        total_grid_points *= grid_points[i];
+        if (total_grid_points > kMaxGridPoints) {
+            return false;
+        }
     }
-
-    // Construct skcms_Curve for the table
-    skcms_Curve curve;
-    memset(&curve, 0, sizeof(skcms_Curve));
-    curve.table_entries = static_cast<uint32_t>(table.size());
-    curve.table_8 = nullptr;
-    curve.table_16 = be_bytes.data();
-
-    // Call skcms_ApproximateCurve (signature verified at compile time)
-    skcms_TransferFunction skcms_approx;
-    float max_error = 0.0f;
-    bool success = skcms_ApproximateCurve(&curve, &skcms_approx, &max_error);
-
-    if (!success) {
-        return false;
-    }
-
-    // Copy result field-by-field to avoid memcpy of non-trivial type
-    out_approx.g = skcms_approx.g;
-    out_approx.a = skcms_approx.a;
-    out_approx.b = skcms_approx.b;
-    out_approx.c = skcms_approx.c;
-    out_approx.d = skcms_approx.d;
-    out_approx.e = skcms_approx.e;
-    out_approx.f = skcms_approx.f;
-    out_max_error = max_error;
-
     return true;
 }
 
@@ -88,7 +62,8 @@ void ToSkcmsTransferFunction(const TransferFunction& rust_tf,
                   "TransferFunction must have standard layout for safe memcpy");
     static_assert(std::is_trivially_copyable_v<TransferFunction>,
                   "TransferFunction must be trivially copyable for memcpy");
-    // Spot-check field offsets in skcms_TransferFunction to verify the unusual ordering (g, a, b, c, d, e, f)
+    // Spot-check field offsets in skcms_TransferFunction to verify the unusual ordering
+    // (g, a, b, c, d, e, f)
     static_assert(offsetof(skcms_TransferFunction, g) == 0,
                   "skcms_TransferFunction::g must be at offset 0");
     static_assert(offsetof(skcms_TransferFunction, a) == sizeof(float),
@@ -97,29 +72,36 @@ void ToSkcmsTransferFunction(const TransferFunction& rust_tf,
 }
 
 static void ToSkcmsCurve(const rust_icc::Curve& rust_curve, skcms_Curve* out_skcms) {
-    // Note: Curve table data (table_16) is borrowed from Rust Vec via .data().
+    // Note: Curve table data (table_8 or table_16) is borrowed from Rust Vec via .data().
     // See ToSkcmsIccProfile documentation about lifetime requirements.
     if (rust_curve.table_entries == 0) {
         out_skcms->table_entries = 0;
+        out_skcms->table_8 = nullptr;
+        out_skcms->table_16 = nullptr;
         ToSkcmsTransferFunction(rust_curve.parametric, &out_skcms->parametric);
-    } else {
+    } else if (rust_curve.table_format == rust_icc::TableFormat::U16) {
         out_skcms->table_entries = rust_curve.table_entries;
         out_skcms->table_8 = nullptr;
         out_skcms->table_16 = rust_curve.table_data.data();
+    } else {
+        out_skcms->table_entries = rust_curve.table_entries;
+        out_skcms->table_8 = rust_curve.table_data.data();
+        out_skcms->table_16 = nullptr;
     }
 }
 
-static bool ToSkcmsA2B(const rust_icc::A2B& rust_a2b, skcms_A2B* out_skcms) {
+static bool ToSkcmsA2B(const rust_icc::A2BOrB2ATransform& rust_a2b, skcms_A2B* out_skcms) {
     memset(out_skcms, 0, sizeof(skcms_A2B));
 
     // Input curves: If input_channels is non-zero, ensure we have enough curves
+    if (rust_a2b.input_channels > 4) {
+        return false;
+    }
     out_skcms->input_channels = rust_a2b.input_channels;
     if (rust_a2b.input_channels > 0) {
-        if (rust_a2b.input_channels < 1 || rust_a2b.input_channels > 4) {
-            return false;
-        }
         // Only validate curve count if input_channels is specified
-        if (!rust_a2b.input_curves.empty() && rust_a2b.input_channels > rust_a2b.input_curves.size()) {
+        if (!rust_a2b.input_curves.empty() &&
+            rust_a2b.input_channels > rust_a2b.input_curves.size()) {
             return false;
         }
         for (size_t i = 0; i < rust_a2b.input_curves.size() && i < 4; i++) {
@@ -137,7 +119,10 @@ static bool ToSkcmsA2B(const rust_icc::A2B& rust_a2b, skcms_A2B* out_skcms) {
     }
     memcpy(out_skcms->grid_points, rust_a2b.grid_points.data(), 4);
     if (!rust_a2b.grid_data.empty()) {
-        if (rust_a2b.is_16bit_grid) {
+        if (!ValidateGridPoints(out_skcms->grid_points, out_skcms->input_channels)) {
+            return false;
+        }
+        if (rust_a2b.grid_format == rust_icc::TableFormat::U16) {
             out_skcms->grid_16 = rust_a2b.grid_data.data();
         } else {
             out_skcms->grid_8 = rust_a2b.grid_data.data();
@@ -149,7 +134,8 @@ static bool ToSkcmsA2B(const rust_icc::A2B& rust_a2b, skcms_A2B* out_skcms) {
     uint32_t effective_matrix_channels = rust_a2b.matrix_channels;
     if (effective_matrix_channels == 0 && !rust_a2b.matrix_curves.empty()) {
         // Infer matrix_channels from the number of matrix curves provided
-        effective_matrix_channels = std::min(static_cast<uint32_t>(rust_a2b.matrix_curves.size()), 3u);
+        effective_matrix_channels =
+                std::min(static_cast<uint32_t>(rust_a2b.matrix_curves.size()), 3u);
     }
 
     if (effective_matrix_channels > rust_a2b.matrix_curves.size()) {
@@ -176,14 +162,15 @@ static bool ToSkcmsA2B(const rust_icc::A2B& rust_a2b, skcms_A2B* out_skcms) {
         }
     }
 
-    // Output curves: If output_channels is non-zero, ensure we have enough curves
+    // A2B output is always PCS (XYZ/Lab), which is 3-dimensional (crbug.com/506010945).
+    if (rust_a2b.output_channels != 3) {
+        return false;
+    }
     out_skcms->output_channels = rust_a2b.output_channels;
     if (rust_a2b.output_channels > 0) {
-        if (rust_a2b.output_channels > 4) {
-            return false;
-        }
         // Only validate curve count if output_channels is specified
-        if (!rust_a2b.output_curves.empty() && rust_a2b.output_channels > rust_a2b.output_curves.size()) {
+        if (!rust_a2b.output_curves.empty() &&
+            rust_a2b.output_channels > rust_a2b.output_curves.size()) {
             return false;
         }
         for (size_t i = 0; i < rust_a2b.output_curves.size() && i < 4; i++) {
@@ -194,7 +181,7 @@ static bool ToSkcmsA2B(const rust_icc::A2B& rust_a2b, skcms_A2B* out_skcms) {
 }
 
 // Helper to populate skcms_B2A from Rust B2A data
-static bool ToSkcmsB2A(const rust_icc::B2A& rust_b2a, skcms_B2A* out_skcms) {
+static bool ToSkcmsB2A(const rust_icc::A2BOrB2ATransform& rust_b2a, skcms_B2A* out_skcms) {
     memset(out_skcms, 0, sizeof(skcms_B2A));
 
     // Input curves
@@ -214,7 +201,8 @@ static bool ToSkcmsB2A(const rust_icc::B2A& rust_b2a, skcms_B2A* out_skcms) {
     uint32_t effective_matrix_channels = rust_b2a.matrix_channels;
     if (effective_matrix_channels == 0 && !rust_b2a.matrix_curves.empty()) {
         // Infer matrix_channels from the number of matrix curves provided
-        effective_matrix_channels = std::min(static_cast<uint32_t>(rust_b2a.matrix_curves.size()), 3u);
+        effective_matrix_channels =
+                std::min(static_cast<uint32_t>(rust_b2a.matrix_curves.size()), 3u);
     }
 
     if (effective_matrix_channels > rust_b2a.matrix_curves.size()) {
@@ -251,15 +239,20 @@ static bool ToSkcmsB2A(const rust_icc::B2A& rust_b2a, skcms_B2A* out_skcms) {
     }
     memcpy(out_skcms->grid_points, rust_b2a.grid_points.data(), 4);
     if (!rust_b2a.grid_data.empty()) {
-        if (rust_b2a.is_16bit_grid) {
+        if (!ValidateGridPoints(out_skcms->grid_points, rust_b2a.input_channels)) {
+            return false;
+        }
+        if (rust_b2a.grid_format == rust_icc::TableFormat::U16) {
             out_skcms->grid_16 = rust_b2a.grid_data.data();
         } else {
             out_skcms->grid_8 = rust_b2a.grid_data.data();
         }
     }
 
-    // Output curves
-    if (rust_b2a.output_channels < 1 || rust_b2a.output_channels > 4) {
+    // skcms requires 3 (RGB) or 4 (CMYK) output channels for B2A,
+    // or 0 when the CLUT/A-curves stage is skipped.
+    if (rust_b2a.output_channels != 0 &&
+        (rust_b2a.output_channels < 3 || rust_b2a.output_channels > 4)) {
         return false;
     }
     if (rust_b2a.output_channels > rust_b2a.output_curves.size()) {
@@ -273,6 +266,9 @@ static bool ToSkcmsB2A(const rust_icc::B2A& rust_b2a, skcms_B2A* out_skcms) {
 }
 
 bool ToSkcmsIccProfile(const IccProfile& rust_profile, skcms_ICCProfile* out_skcms) {
+    if (!out_skcms) {
+        return false;
+    }
     memset(out_skcms, 0, sizeof(skcms_ICCProfile));
 
     // Copy color space information
@@ -285,14 +281,12 @@ bool ToSkcmsIccProfile(const IccProfile& rust_profile, skcms_ICCProfile* out_skc
         ToSkcmsMatrix3x3(rust_profile.to_xyzd50, &out_skcms->toXYZD50);
     }
 
-    // Copy transfer curves if present
+    // Copy transfer curves if present preserving the original curve type
+    // (parametric or table).
     out_skcms->has_trc = rust_profile.has_trc;
     if (rust_profile.has_trc) {
-        // Convert each channel's transfer function
-        for (int i = 0; i < 3; i++) {
-            // Set up the skcms_Curve as a parametric function (not a LUT)
-            out_skcms->trc[i].table_entries = 0;  // 0 = parametric, not table
-            ToSkcmsTransferFunction(rust_profile.trc[i], &out_skcms->trc[i].parametric);
+        for (size_t i = 0; i < 3; i++) {
+            ToSkcmsCurve(rust_profile.trc[i], &out_skcms->trc[i]);
         }
     }
 
@@ -303,6 +297,13 @@ bool ToSkcmsIccProfile(const IccProfile& rust_profile, skcms_ICCProfile* out_skc
         out_skcms->CICP.transfer_characteristics = rust_profile.cicp.transfer_characteristics;
         out_skcms->CICP.matrix_coefficients = rust_profile.cicp.matrix_coefficients;
         out_skcms->CICP.video_full_range_flag = rust_profile.cicp.video_full_range_flag;
+    }
+
+    // Copy HAGC data if present
+    out_skcms->has_HAGC = rust_profile.has_hagc;
+    if (rust_profile.has_hagc) {
+        out_skcms->HAGC.size = static_cast<uint32_t>(rust_profile.hagc.size());
+        out_skcms->HAGC.buffer = rust_profile.hagc.data();
     }
 
     // Populate A2B and B2A transforms if present
@@ -316,13 +317,16 @@ bool ToSkcmsIccProfile(const IccProfile& rust_profile, skcms_ICCProfile* out_skc
     out_skcms->has_B2A = rust_profile.has_b2a;
     if (rust_profile.has_b2a) {
         if (!ToSkcmsB2A(rust_profile.b2a, &out_skcms->B2A)) {
-            return false;
+            // Non-fatal: if B2A conversion fails, the profile is still usable via A2B.
+            out_skcms->has_B2A = false;
         }
     }
 
-    // A profile needs either a matrix, transfer curves, or A2B/B2A to be useful
-    if (!out_skcms->has_toXYZD50 && !out_skcms->has_trc &&
-        !out_skcms->has_A2B && !out_skcms->has_B2A) {
+    // To be usable as a source profile in skcms_Transform, a profile needs
+    // either an A2B transform or both TRC curves and a toXYZD50 matrix.
+    // This mirrors skcms_Parse's usable_as_src() validation.
+    if (!out_skcms->has_A2B &&
+        !(out_skcms->has_trc && out_skcms->has_toXYZD50)) {
         return false;
     }
 

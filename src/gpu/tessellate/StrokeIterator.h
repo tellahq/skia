@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -13,7 +13,7 @@
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkStrokeRec.h"
-#include "include/private/base/SkAssert.h"
+#include "include/private/SkAssert.h"
 #include "src/core/SkPathPriv.h"
 
 #include <array>
@@ -360,9 +360,9 @@ private:
     const SkPoint* fLastDegenerateStrokePt = nullptr;
 
     // The queue is implemented as a roll-over array with a floating front index.
-    Verb fVerbs[kQueueBufferCount];
-    const SkPoint* fPts[kQueueBufferCount];
-    const float* fW[kQueueBufferCount];
+    std::array<Verb, kQueueBufferCount> fVerbs;
+    std::array<const SkPoint*, kQueueBufferCount> fPts;
+    std::array<const float*, kQueueBufferCount> fW;
     int fQueueFrontIdx = 0;
     int fQueueCount = 0;
 

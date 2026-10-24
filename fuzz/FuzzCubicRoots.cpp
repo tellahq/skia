@@ -6,17 +6,18 @@
  */
 
 #include "fuzz/Fuzz.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "src/base/SkCubics.h"
-#include "src/base/SkQuads.h"
-#include "src/base/SkUtils.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkFloatingPoint.h"
+#include "src/core/SkCubics.h"
+#include "src/core/SkQuads.h"
+#include "src/core/SkUtils.h"
 
+#include <array>
 #include <cmath>
 
 static void fuzz_cubic_real_roots(double A, double B, double C, double D) {
-    double roots[3];
-    const int numSolutions = SkCubics::RootsReal(A, B, C, D, roots);
+    std::array<double, 3> roots = {};
+    const int numSolutions = SkCubics::RootsReal(A, B, C, D, roots.data());
     SkASSERT_RELEASE(numSolutions >= 0 && numSolutions <= 3);
     for (int i = 0; i < numSolutions; i++) {
         SkASSERT_RELEASE(std::isfinite(roots[i]));
@@ -32,8 +33,8 @@ static void fuzz_cubic_real_roots(double A, double B, double C, double D) {
 }
 
 static void fuzz_cubic_roots_valid_t(double A, double B, double C, double D) {
-    double roots[3];
-    const int numSolutions = SkCubics::RootsValidT(A, B, C, D, roots);
+    std::array<double, 3> roots = {};
+    const int numSolutions = SkCubics::RootsValidT(A, B, C, D, roots.data());
     SkASSERT_RELEASE(numSolutions >= 0 && numSolutions <= 3);
     for (int i = 0; i < numSolutions; i++) {
         SkASSERT_RELEASE(std::isfinite(roots[i]));
@@ -51,8 +52,8 @@ static void fuzz_cubic_roots_valid_t(double A, double B, double C, double D) {
 }
 
 static void fuzz_cubic_roots_binary_search(double A, double B, double C, double D) {
-    double roots[3];
-    const int numSolutions = SkCubics::BinarySearchRootsValidT(A, B, C, D, roots);
+    std::array<double, 3> roots = {};
+    const int numSolutions = SkCubics::BinarySearchRootsValidT(A, B, C, D, roots.data());
     SkASSERT_RELEASE(numSolutions >= 0 && numSolutions <= 3);
     for (int i = 0; i < numSolutions; i++) {
         SkASSERT_RELEASE(std::isfinite(roots[i]));

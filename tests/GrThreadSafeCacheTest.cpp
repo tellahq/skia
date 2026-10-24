@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -29,15 +29,15 @@
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/gpu/ganesh/GrTypes.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMalloc.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMalloc.h"
 #include "include/private/chromium/GrDeferredDisplayList.h"
 #include "include/private/chromium/GrDeferredDisplayListRecorder.h"
 #include "include/private/chromium/GrSurfaceCharacterization.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkMessageBus.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/GpuTypesPriv.h"
 #include "src/gpu/ResourceKey.h"
 #include "src/gpu/SkBackingFit.h"
@@ -67,6 +67,7 @@
 #include "src/gpu/ganesh/GrTextureProxy.h"
 #include "src/gpu/ganesh/GrThreadSafeCache.h"
 #include "src/gpu/ganesh/SurfaceDrawContext.h"
+#include "src/gpu/ganesh/image/GrMippedBitmap.h"
 #include "src/gpu/ganesh/ops/GrDrawOp.h"
 #include "src/gpu/ganesh/ops/GrOp.h"
 #include "tests/ComparePixels.h"
@@ -689,8 +690,11 @@ GrSurfaceProxyView TestHelper::CreateViewOnCpu(GrRecordingContext* rContext,
                                                Stats* stats) {
     GrProxyProvider* proxyProvider = rContext->priv().proxyProvider();
 
-    sk_sp<GrTextureProxy> proxy = proxyProvider->createProxyFromBitmap(
-            create_bitmap(wh), skgpu::Mipmapped::kNo, SkBackingFit::kExact, skgpu::Budgeted::kYes);
+    sk_sp<GrTextureProxy> proxy =
+            proxyProvider->createProxyFromBitmap(GrMippedBitmap(create_bitmap(wh)),
+                                                 skgpu::Mipmapped::kNo,
+                                                 SkBackingFit::kExact,
+                                                 skgpu::Budgeted::kYes);
     if (!proxy) {
         return {};
     }
@@ -1001,7 +1005,8 @@ DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrThreadSafeCache4_5Verts,
 //            its lazy proxy, life goes on
 static void test_4_75(GrDirectContext* dContext, skiatest::Reporter* reporter,
                       TestHelper::addAccessFP addAccess,
-                      TestHelper::checkFP check) {
+                      TestHelper::checkFP check,
+                      bool failureClearsProxyCache) {
 
     TestHelper helper(dContext);
 
@@ -1018,10 +1023,14 @@ static void test_4_75(GrDirectContext* dContext, skiatest::Reporter* reporter,
     dContext->flush();
     dContext->submit(GrSyncCpu::kYes);
 
-    REPORTER_ASSERT(reporter, (helper.*check)(helper.liveCanvas(), kImageWH,
-                                              /*hits*/ 0, /*misses*/ 1, /*refs*/ 0, kNoID));
+    int expectedCacheEntries = failureClearsProxyCache ? 0 : 1;
+    // The flush will fail, which will empty the thread safe cache (b/561987051). The Stats
+    // aren't reset, but we shouldn't find an entry anymore so expect check() to fail.
+    REPORTER_ASSERT(reporter, failureClearsProxyCache !=
+            (helper.*check)(helper.liveCanvas(), kImageWH,
+                            /*hits*/ 0, /*misses*/ 1, /*refs*/ 0, kNoID));
+    REPORTER_ASSERT(reporter, helper.numCacheEntries() == expectedCacheEntries);
 
-    REPORTER_ASSERT(reporter, helper.numCacheEntries() == 1);
     REPORTER_ASSERT(reporter, helper.stats()->fNumLazyCreations == 1);
     REPORTER_ASSERT(reporter, helper.stats()->fNumHWCreations == 0);
     REPORTER_ASSERT(reporter, helper.stats()->fNumSWCreations == 0);
@@ -1032,7 +1041,8 @@ DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrThreadSafeCache4_75View,
                                        ctxInfo,
                                        CtsEnforcement::kNever) {
     test_4_75(ctxInfo.directContext(), reporter,
-              &TestHelper::addViewAccess, &TestHelper::checkView);
+              &TestHelper::addViewAccess, &TestHelper::checkView,
+              /*failureClearsProxyCache=*/true);
 }
 
 DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrThreadSafeCache4_75Verts,
@@ -1040,7 +1050,8 @@ DEF_GANESH_TEST_FOR_RENDERING_CONTEXTS(GrThreadSafeCache4_75Verts,
                                        ctxInfo,
                                        CtsEnforcement::kNever) {
     test_4_75(ctxInfo.directContext(), reporter,
-              &TestHelper::addVertAccess, &TestHelper::checkVert);
+              &TestHelper::addVertAccess, &TestHelper::checkVert,
+              /*failureClearsProxyCache=*/false);
 }
 
 // Case 5: ensure that expanding the map works (esp. wrt custom data)

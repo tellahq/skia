@@ -8,15 +8,15 @@
 
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPath.h"
+#include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkPoint_impl.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkAutoMalloc.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTemplates.h"
+#include "src/core/SkAutoMalloc.h"
 #include "src/core/SkDistanceFieldGen.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPathPriv.h"
@@ -25,6 +25,7 @@
 #include "src/gpu/ganesh/geometry/GrPathUtils.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 using namespace skia_private;
@@ -132,7 +133,7 @@ public:
                  fMat[3] * src.fX + fMat[4] * src.fY + fMat[5] };
     }
 private:
-    double fMat[6];
+    std::array<double, 6> fMat;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -216,7 +217,7 @@ public:
     static_assert(0 == kLine && 1 == kQuad);
 
     // line uses 2 pts, quad uses 3 pts
-    SkPoint fPts[3];
+    std::array<SkPoint, 3> fPts;
 
     DPoint  fP0T, fP2T;
     DAffineMatrix fXformMatrix;  // transforms the segment into canonical space

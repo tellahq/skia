@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -12,18 +12,20 @@
 #include "include/core/SkColorType.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSize.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkMath.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkMath.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "modules/skcms/skcms.h"
-#include "src/base/SkArenaAlloc.h"
-#include "src/base/SkRectMemcpy.h"
+#include "src/core/SkArenaAlloc.h"
 #include "src/core/SkColorSpaceXformSteps.h"
 #include "src/core/SkRasterPipeline.h"
 #include "src/core/SkRasterPipelineOpContexts.h"
 #include "src/core/SkRasterPipelineOpList.h"
+#include "src/core/SkRectMemcpy.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/gpu/Swizzle.h"
 #include "src/gpu/ganesh/GrImageInfo.h"
@@ -36,39 +38,30 @@
 
 using namespace skia_private;
 
-size_t GrComputeTightCombinedBufferSize(size_t bytesPerPixel, SkISize baseDimensions,
-                                        TArray<size_t>* individualMipOffsets, int mipLevelCount) {
+size_t GrComputeCombinedBufferSize(size_t bytesPerPixel, SkISize baseDimensions,
+                                   TArray<size_t>* individualMipOffsets, int mipLevelCount,
+                                   size_t rowAlignment) {
     SkASSERT(individualMipOffsets && individualMipOffsets->empty());
     SkASSERT(mipLevelCount >= 1);
+    SkASSERT(rowAlignment > 0 && rowAlignment % bytesPerPixel == 0);
 
-    individualMipOffsets->push_back(0);
-
-    size_t combinedBufferSize = baseDimensions.width() * bytesPerPixel * baseDimensions.height();
+    SkSafeMath safe;
+    size_t combinedBufferSize = 0;
     SkISize levelDimensions = baseDimensions;
 
-    // The Vulkan spec for copying a buffer to an image requires that the alignment must be at
-    // least 4 bytes and a multiple of the bytes per pixel of the image config.
-    SkASSERT(bytesPerPixel == 1 || bytesPerPixel == 2 || bytesPerPixel == 3 ||
-             bytesPerPixel == 4 || bytesPerPixel == 8 || bytesPerPixel == 16);
-    int desiredAlignment = (bytesPerPixel == 3) ? 12 : (bytesPerPixel > 4 ? bytesPerPixel : 4);
-
-    for (int currentMipLevel = 1; currentMipLevel < mipLevelCount; ++currentMipLevel) {
-        levelDimensions = {std::max(1, levelDimensions.width() /2),
-                           std::max(1, levelDimensions.height()/2)};
-
-        size_t trimmedSize = levelDimensions.area() * bytesPerPixel;
-        const size_t alignmentDiff = combinedBufferSize % desiredAlignment;
-        if (alignmentDiff != 0) {
-            combinedBufferSize += desiredAlignment - alignmentDiff;
-        }
-        SkASSERT((0 == combinedBufferSize % 4) && (0 == combinedBufferSize % bytesPerPixel));
-
+    for (int currentMipLevel = 0; currentMipLevel < mipLevelCount; ++currentMipLevel) {
         individualMipOffsets->push_back(combinedBufferSize);
-        combinedBufferSize += trimmedSize;
+        size_t trimRowBytes = safe.mul(levelDimensions.width(), bytesPerPixel);
+        size_t alignedRowBytes = safe.alignUpNonPow2(trimRowBytes, rowAlignment);
+        combinedBufferSize = safe.add(combinedBufferSize,
+                                      safe.mul(alignedRowBytes, levelDimensions.height()));
+
+        levelDimensions = {std::max(1, levelDimensions.width() / 2),
+                           std::max(1, levelDimensions.height() / 2)};
     }
 
     SkASSERT(individualMipOffsets->size() == mipLevelCount);
-    return combinedBufferSize;
+    return safe.ok() ? combinedBufferSize : 0;
 }
 
 static skgpu::Swizzle get_load_and_src_swizzle(GrColorType ct, SkRasterPipelineOp* load,
@@ -104,6 +97,9 @@ static skgpu::Swizzle get_load_and_src_swizzle(GrColorType ct, SkRasterPipelineO
 
         case GrColorType::kRGBA_8888_SRGB:   *load = SkRasterPipelineOp::load_8888;
                                              *isSRGB = true;
+                                             break;
+        case GrColorType::kR_F16:            *load = SkRasterPipelineOp::load_rf16;
+                                             *isNormalized = false;
                                              break;
         case GrColorType::kRG_F16:           *load = SkRasterPipelineOp::load_rgf16;
                                              *isNormalized = false;
@@ -150,7 +146,6 @@ static skgpu::Swizzle get_load_and_src_swizzle(GrColorType ct, SkRasterPipelineO
                                              break;
         // These are color types we don't expect to ever have to load.
         case GrColorType::kRGB_888:
-        case GrColorType::kR_F16:
         case GrColorType::kGray_F16:
         case GrColorType::kUnknown:
             SK_ABORT("unexpected CT");
@@ -199,6 +194,9 @@ static skgpu::Swizzle get_dst_swizzle_and_store(GrColorType ct, SkRasterPipeline
         case GrColorType::kRGBA_8888_SRGB:   *store = SkRasterPipelineOp::store_8888;
                                              *isSRGB = true;
                                              break;
+        case GrColorType::kR_F16:            *store = SkRasterPipelineOp::store_rf16;
+                                             *isNormalized = false;
+                                             break;
         case GrColorType::kRG_F16:           *store = SkRasterPipelineOp::store_rgf16;
                                              *isNormalized = false;
                                              break;
@@ -235,9 +233,6 @@ static skgpu::Swizzle get_dst_swizzle_and_store(GrColorType ct, SkRasterPipeline
                                              break;
         case GrColorType::kR_16:             swizzle = skgpu::Swizzle("r001");
                                              *store = SkRasterPipelineOp::store_r16;
-                                             break;
-        case GrColorType::kR_F16:            swizzle = skgpu::Swizzle("agbr");
-                                             *store = SkRasterPipelineOp::store_af16;
                                              break;
         case GrColorType::kGray_F16:         *lumMode = LumMode::kToAlpha;
                                              *store = SkRasterPipelineOp::store_af16;

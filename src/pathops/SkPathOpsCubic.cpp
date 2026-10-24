@@ -6,11 +6,11 @@
  */
 #include "src/pathops/SkPathOpsCubic.h"
 
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkTSort.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkGeometry.h"
+#include "src/core/SkTSort.h"
 #include "src/pathops/SkIntersections.h"
 #include "src/pathops/SkLineParameters.h"
 #include "src/pathops/SkPathOpsConic.h"
@@ -19,6 +19,7 @@
 #include "src/pathops/SkPathOpsTypes.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 struct SkDLine;
@@ -157,8 +158,8 @@ bool SkDCubic::endsAreExtremaInXOrY() const {
 */
 bool SkDCubic::hullIntersects(const SkDPoint* pts, int ptCount, bool* isLinear) const {
     bool linear = true;
-    char hullOrder[4];
-    int hullCount = convexHull(hullOrder);
+    std::array<char, 4> hullOrder;
+    int hullCount = convexHull(hullOrder.data());
     int end1 = hullOrder[0];
     int hullIndex = 0;
     const SkDPoint* endPt[2];

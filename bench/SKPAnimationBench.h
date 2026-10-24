@@ -9,7 +9,7 @@
 #define SKPAnimationBench_DEFINED
 
 #include "bench/SKPBench.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "tools/timer/Timer.h"
 
 /**
@@ -34,9 +34,6 @@ protected:
     const char* onGetUniqueName() override;
     void onPerCanvasPreDraw(SkCanvas* canvas) override;
 
-    void drawMPDPicture() override {
-        SK_ABORT("MPD not supported\n");
-    }
     void drawPicture() override;
 
 private:

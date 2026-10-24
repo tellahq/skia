@@ -225,7 +225,7 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		// Use 4x MSAA for all our testing. It's more consistent and 8x MSAA is nondeterministic (by
 		// design) on NVIDIA hardware. The problem is especially bad on ANGLE.  skbug.com/40038032 skbug.com/40037753
 		sampleCount = 4
-		if b.MatchOs("Android") || b.Os("iOS") {
+		if b.MatchOs("Android", "iOS") {
 			glPrefix = "gles"
 			// MSAA is disabled on Pixel3a (https://b.corp.google.com/issues/143074513).
 			// MSAA is disabled on Pixel5 (https://skbug.com/40042528).
@@ -434,6 +434,10 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 			skip(ALL, "test", ALL, "UserDefinedStableKeyTest")
 		}
 
+		if b.ExtraConfig("AvoidDepth") {
+			args = append(args, "--avoidDepth")
+		}
+
 		// The Tegra3 doesn't support MSAA
 		if b.GPU("Tegra3") ||
 			// We aren't interested in fixing msaa bugs on current iOS devices.
@@ -479,9 +483,17 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 
 				configs = []string{baseConfig}
 
+				if b.MatchOs("Ubuntu26.04") {
+					args = append(args, "--gpuThreads", "0")
+				}
+
 				if b.ExtraConfig("FakeWGPU") {
 					args = append(args, "--neverYieldToWebGPU")
 					args = append(args, "--useWGPUTextureView")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_1")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_2")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_3")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_4")
 				}
 
 				// Shader doesn't compile
@@ -506,6 +518,13 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 				}
 
 				if b.ExtraConfig("GL") || b.ExtraConfig("GLES") {
+					// skbug.com/542719737 (Dawn GLES fails w/ threaded PipelineManager)
+					args = append(args, "--gpuThreads", "0")
+					skip(ALL, "test", ALL, "PipelineManagerThreadedTest_1")
+					skip(ALL, "test", ALL, "PipelineManagerThreadedTest_2")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_1")
+					skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest_2")
+
 					// These GMs currently have rendering issues in Dawn compat.
 					skip(ALL, "gm", ALL, "glyph_pos_n_s")
 					skip(ALL, "gm", ALL, "persptext")
@@ -535,12 +554,62 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 					// b/425434638 - PaintParamsKeyTest failing on Release Dawn_Vulkan
 					skip(ALL, "test", ALL, "PaintParamsKeyTest")
 
-					// b/485161482 - Compute_SampledTexture fails with an access violation
+					if b.MatchOs("Ubuntu26.04") && b.GPU("IntelArcB570") {
+						skip(ALL, "test", ALL, "PersistentPipelineStorageTest")
+
+						if b.ExtraConfig("Dawn") {
+							skip(ALL, "test", ALL, "UserDefinedStableKeyTest")
+							skip(ALL, "test", ALL, "PipelineManagerThreadedTest")
+							skip(ALL, "test", ALL, "PipelineManagerEarlyExitTest")
+							skip(ALL, "test", ALL, "ThreadedPipeline")
+							skip(ALL, "test", ALL, "RecordingSurfacesTest")
+							skip(ALL, "test", ALL, "RecordingOrderTest")
+							skip(ALL, "test", ALL, "ImageOriginTest")
+							skip(ALL, "test", ALL, "ImageProviderTest")
+							skip(ALL, "test", ALL, "ImageShaderTest")
+							skip(ALL, "test", ALL, "MutableImagesTest")
+							skip(ALL, "test", ALL, "NotifyInUseTest")
+							skip(ALL, "test", ALL, "UpdateBackendTexture")
+							skip(ALL, "test", ALL, "UploadBufferManagerTest")
+							skip(ALL, "test", ALL, "Multisample")
+							skip(ALL, "test", ALL, "RuntimeEffect")
+							skip(ALL, "test", ALL, "CacheKeyTest")
+							skip(ALL, "test", ALL, "ImageWrapTextureMipmapsTest")
+							skip(ALL, "test", ALL, "PromiseImage")
+							skip(ALL, "test", ALL, "Precompile")
+							skip(ALL, "test", ALL, "DeviceTest")
+							skip(ALL, "test", ALL, "InnerFill")
+							skip(ALL, "test", ALL, "Key")
+							skip(ALL, "test", ALL, "Texture")
+							skip(ALL, "test", ALL, "ShaderInfo")
+							skip(ALL, "test", ALL, "SkSL")
+							skip(ALL, "test", ALL, "SkRuntime")
+							skip(ALL, "test", ALL, "ShaderTest")
+							skip(ALL, "test", ALL, "SimplifyPaintTest")
+							skip(ALL, "test", ALL, "ImageFilter")
+							skip(ALL, "test", ALL, "Blur")
+							skip(ALL, "test", ALL, "BigImage")
+							skip(ALL, "test", ALL, "TiledDrawCache")
+							skip(ALL, "test", ALL, "crbug_513836996")
+							skip(ALL, "test", ALL, "PipelineCallbackTest")
+							skip(ALL, "test", ALL, "DirectMaskLimitTest")
+							skip(ALL, "test", ALL, "CacheBudgetTest")
+						}
+					}
+
 					if b.GPU("IntelIris540") {
+						// b/485161482 - Compute_SampledTexture fails with an access violation
 						skip(ALL, "test", ALL, "Compute_SampledTexture")
 						skip(ALL, "test", ALL, "Compute_StorageTextureMultipleComputeSteps")
 						skip(ALL, "test", ALL, "Compute_ReadOnlyStorageBuffer")
 						skip(ALL, "test", ALL, "Compute_StorageTextureReadAndWrite")
+						// b/504975414 - MSAA tests are failing
+						skip(ALL, "test", ALL, "RecordingSurfacesTestDraw")
+						skip(ALL, "test", ALL, "RecordingSurfacesTestDrawWithClip")
+						skip(ALL, "test", ALL, "RecordingSurfacesTestClear")
+						skip(ALL, "test", ALL, "RecordingOrderTest_Graphite")
+						skip(ALL, "test", ALL, "MultisampleRetainTest")
+						skip(ALL, "test", ALL, "ImageWrapTextureMipmapsTest")
 					}
 
 					if b.ExtraConfig("TSAN") {
@@ -597,26 +666,32 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 					skip(ALL, "test", ALL, "ThreadedPipelinePrecompileCompilePurgingTest")
 					skip(ALL, "test", ALL, "ThreadedPipelinePrecompilePurgingTest")
 
-					if b.GPU("QuadroP400") || b.MatchOs("Ubuntu24.04") {
-						// Neither the nVidia driver on the P400s nor the Ubuntu24.04 driver
+					if b.GPU("QuadroP400") || b.MatchOs("Ubuntu24.04") || b.MatchOs("Ubuntu26.04") {
+						// Neither the nVidia driver on the P400s nor the Ubuntu24.04/Ubuntu26.04 drivers
 						// correctly support pipeline caching control (i.e., they *never* return
 						// VK_PIPELINE_COMPILE_REQUIRED from CreateGraphicsPipelines)
 						skip(ALL, "test", ALL, "PersistentPipelineStorageTest")
 					}
 
 					if b.MatchOs("Win11") &&
-						b.GPU("RTX3060", "GTX1660", "IntelIrisXe", "IntelUHDGraphics770", "IntelIris540") {
+						b.GPU("RTX3060", "GTX1660", "IntelArcB570", "IntelIrisXe", "IntelUHDGraphics770", "IntelIris540") {
 						// These GPUs are failing this test on Win11 (b/462240488)
 						skip(ALL, "test", ALL, "PersistentPipelineStorageTest")
 					}
 					if b.MatchOs("Win11") && b.GPU("IntelIris540") {
 						skip(ALL, "test", ALL, "NotifyInUseTestLayer") // b/485241813
 					}
-					if b.MatchOs("Win11") && b.GPU("IntelIrisXe", "IntelUHDGraphics770") {
+					if b.MatchOs("Win11") && b.GPU("IntelArc140V", "IntelArcB570", "IntelIrisXe", "IntelUHDGraphics770") {
 						// skbug.com/470073298
 						skip(ALL, "gm", ALL, "ycbcrimage")
 					}
 				}
+			}
+			// b/524993720 Graphite (Native|Dawn) Vulkan on IntelArc140V fails the following tests:
+			if b.GPU("IntelArc140V") && b.ExtraConfig("Vulkan") {
+				skip(ALL, "test", ALL, "GraphiteTimeLimitedPurgeTest")
+				skip(ALL, "test", ALL, "PersistentPipelineStorageTest")
+				skip(ALL, "test", ALL, "SimplifyPaintTest")
 			}
 		} else {
 			if b.GPU("QuadroP400") && b.MatchOs("Ubuntu24.04") {
@@ -634,17 +709,13 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 			}
 		}
 
-		// ANGLE bot *only* runs the angle ES3 configs
+		// ANGLE task *only* runs the angle ES3 configs
 		if b.ExtraConfig("ANGLE") {
 			if b.MatchOs("Win") {
 				configs = []string{"angle_d3d11_es3"}
 				if sampleCount > 0 {
 					configs = append(configs, fmt.Sprintf("angle_d3d11_es3_msaa%d", sampleCount))
-					configs = append(configs, fmt.Sprintf("angle_d3d11_es3_dmsaa"))
-				}
-				if b.Model("NUC5i7RYH") {
-					// skbug.com/40038570
-					skip(ALL, "test", ALL, "ProcessorCloneTest")
+					configs = append(configs, "angle_d3d11_es3_dmsaa")
 				}
 				if b.MatchGpu("Intel") {
 					// Debug-ANGLE-All on Intel frequently timeout, and the FilterResult test suite
@@ -653,6 +724,9 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 					// running these if they are the source of long 'dm' time on Xe hardware given
 					// many other tasks are executing them.
 					skip(ALL, "test", ALL, "FilterResult")
+				}
+				if b.MatchGpu("GTX1660", "QuadroP400", "RTX3060") { // all nVidia GPUs
+					skip(ALL, "test", ALL, "SkSLReturnsValueOnEveryPathES3_Ganesh")
 				}
 			} else if b.MatchOs("Mac") {
 				configs = []string{"angle_mtl_es3"}
@@ -971,6 +1045,9 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 	if b.ExtraConfig("NativeFonts") { // images won't exercise native font integration :)
 		removeFromArgs("image")
 		removeFromArgs("colorImage")
+	} else {
+		// Not reliable on non-NativeFonts
+		skip(ALL, "test", ALL, "Skottie_Shaper_CTStrict")
 	}
 
 	if b.MatchExtraConfig("Graphite") {
@@ -1079,7 +1156,7 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		skip(ALL, "gm", ALL, "wacky_yuv_formats_limited_fromimages")
 	}
 
-	if b.Os("iOS") {
+	if b.MatchOs("iOS") {
 		skip(glPrefix, "skp", ALL, ALL)
 	}
 
@@ -1171,7 +1248,7 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 	// avoid lots of images on Gold.
 	skip(ALL, "image", "gen_platf", "error")
 
-	if b.MatchOs("Android") || b.Os("iOS") {
+	if b.MatchOs("Android", "iOS") {
 		// This test crashes the N9 (perhaps because of large malloc/frees). It also
 		// is fairly slow and not platform-specific. So we just disable it on all of
 		// Android and iOS. skbug.com/40036610
@@ -1587,12 +1664,7 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		match = append(match, "~BlurMaskBiggerThanDest")
 	}
 
-	if b.GPU("IntelIris6100") && b.ExtraConfig("ANGLE") && !b.Debug() {
-		// skbug.com/40038570
-		match = append(match, "~^ProcessorOptimizationValidationTest$")
-	}
-
-	if b.GPU("IntelIris6100", "IntelHD4400") && b.ExtraConfig("ANGLE") {
+	if b.GPU("IntelHD4400") && b.ExtraConfig("ANGLE") {
 		// skbug.com/40038077
 		skip("angle_d3d9_es2", "gm", ALL, "lighting")
 	}
@@ -1615,6 +1687,11 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		skip(ALL, "test", ALL, "ResourceCacheStencilBuffers")
 		skip(ALL, "test", ALL, "SurfaceAttachStencil_Gpu")
 		skip(ALL, "test", ALL, "SurfaceClear_Gpu")
+	}
+
+	if b.IsWindows() && b.GPU("IntelArcB570") && b.ExtraConfig("ANGLE") {
+		// skbug.com/535536995
+		skip(ALL, "test", ALL, "BigImageTest_Ganesh")
 	}
 
 	if b.GPU("PowerVRGX6250") {
@@ -1697,7 +1774,7 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		match = append(match, "sweep_tiling")
 	}
 
-	if b.MatchExtraConfig("RustPNG") {
+	if b.ExtraConfig("RustPNG") {
 		// TODO(b/356875275) many PNG decoding tests still fail (e.g. those with SkAndroidCodec
 		// or some from DM's image source). For now, just opt-in the tests we know pass and
 		// eventually remove this special handling to run all image tests.
@@ -1705,6 +1782,19 @@ func (b *TaskBuilder) dmFlags(internalHardwareLabel string) {
 		match = []string{
 			"RustPngCodec",
 			"RustEncodePng",
+		}
+	}
+
+	if b.MatchExtraConfig("RustALL") {
+		skipped = []string{}
+		match = []string{
+			"RustBmpCodec",
+			"RustEncodePng",
+			"RustExif",
+			"RustIcc",
+			"RustIcoCodec",
+			"RustJpeg",
+			"RustPngCodec",
 		}
 	}
 

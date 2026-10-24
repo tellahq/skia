@@ -22,11 +22,11 @@
 #include "include/core/SkString.h"
 #include "include/encode/SkEncoder.h"
 #include "include/encode/SkPngEncoder.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
 #include "include/private/SkEncodedInfo.h"
 #include "include/private/SkGainmapInfo.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkNoncopyable.h"
+#include "include/private/SkNoncopyable.h"
 #include "modules/skcms/skcms.h"
 #include "src/codec/SkPngPriv.h"
 #include "src/encode/SkImageEncoderFns.h"
@@ -36,7 +36,7 @@
 
 #include <algorithm>
 #include <array>
-#include <csetjmp>
+#include <setjmp.h>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -276,7 +276,7 @@ bool SkPngEncoderMgr::setHeader(const SkPngEncoderBase::TargetInfo& targetInfo,
 }
 
 static void set_icc(png_structp png_ptr, png_infop info_ptr, const SkImageInfo& info) {
-    sk_sp<SkData> icc = icc_from_color_space(info);
+    sk_sp<SkData> icc = SkWriteICCProfile(info.colorSpace());
     if (!icc) {
         return;
     }

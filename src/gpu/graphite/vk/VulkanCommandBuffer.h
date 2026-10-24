@@ -80,7 +80,6 @@ private:
                               int32_t index);
 
     bool onAddRenderPass(const RenderPassDesc&,
-                         SkIRect renderPassBounds,
                          const Texture* colorTexture,
                          const Texture* resolveTexture,
                          const Texture* depthStencilTexture,
@@ -89,7 +88,7 @@ private:
                          const DrawPassList&) override;
 
     bool beginRenderPass(const RenderPassDesc&,
-                         SkIRect renderPassBounds,
+                         SkIRect viewport,
                          const Texture* colorTexture,
                          const Texture* resolveTexture,
                          const Texture* depthStencilTexture);
@@ -98,7 +97,7 @@ private:
 
     void endRenderPass();
 
-    [[nodiscard]] bool addDrawPass(DrawPass*);
+    void addDrawPass(DrawPass*);
 
     // Track descriptor changes for binding prior to draw calls
     void recordBufferBindingInfo(const BindBufferInfo& info, UniformSlot);
@@ -187,8 +186,7 @@ private:
 
     bool loadMSAAFromResolve(const RenderPassDesc&,
                              VulkanTexture& resolveTexture,
-                             SkISize dstDimensions,
-                             SkIRect nativeBounds);
+                             SkIRect renderArea);
     void nextSubpass();
     void setViewport(SkIRect viewport);
 
@@ -205,6 +203,9 @@ private:
     // Store a ptr to the active RenderPass's target texture so we have access to it for any
     // AddBarrier DrawPassCommands that pertain to the dst. A raw ptr is acceptable here because the
     // target texture is kept alive via a command buffer reference.
+    //
+    // WARNING: If this is an MSAA color attachment, its dimensions may be larger than the
+    // framebuffer's dimensions.
     VulkanTexture* fTargetTexture = nullptr;
     const VulkanGraphicsPipeline* fActiveGraphicsPipeline = nullptr;
 
@@ -225,7 +226,7 @@ private:
     bool fBindUniformBuffers = false;
     bool fBindTextureSamplers = false;
 
-    std::array<BindBufferInfo, VulkanGraphicsPipeline::kNumUniformBuffers> fUniformBuffersToBind;
+    std::array<BindBufferInfo, VulkanGraphicsPipeline::kMaxNumUniformBuffers> fUniformBuffersToBind;
     VkDescriptorSet fTextureSamplerDescSetToBind = VK_NULL_HANDLE;
 
     int fNumTextureSamplers = 0;

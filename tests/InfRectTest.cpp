@@ -8,7 +8,7 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
+#include "include/private/SkFloatingPoint.h"
 #include "tests/Test.h"
 
 #include <array>
@@ -35,7 +35,7 @@ DEF_TEST(InfRect, reporter) {
     SkRect rect = SkRect::MakeXYWH(small, small, big, big);
     REPORTER_ASSERT(reporter, rect.isFinite());
 
-    const SkScalar invalid[] = { nan, inf, -inf };
+    const auto invalid = std::to_array<SkScalar>({nan, inf, -inf});
     for (size_t i = 0; i < std::size(invalid); ++i) {
         check_invalid(reporter, small, small, big, invalid[i]);
         check_invalid(reporter, small, small, invalid[i], big);

@@ -10,7 +10,7 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLIRNode.h"
@@ -372,10 +372,30 @@ public:
     }
 
     /**
-     * Returns true if this is a storage texture.
+     * Returns true if this type represents a dedicated storage texture (writeonly or readwrite).
+     *
+     * Note: `readonly texture2D` (TextureAccess::kRead) can represent either:
+     *  - A read-only storage image (if declared with a pixel-format layout like `layout(rgba8)`)
+     *  - A standalone sampled texture (if declared without a pixel-format layout)
      */
     bool isStorageTexture() const {
-        return fTypeKind == TypeKind::kTexture && this->dimensions() != SpvDimSubpassData;
+        return fTypeKind == TypeKind::kTexture &&
+               this->dimensions() != SpvDimSubpassData &&
+               (this->textureAccess() == TextureAccess::kWrite ||
+                this->textureAccess() == TextureAccess::kReadWrite);
+    }
+
+    /**
+     * Returns true if this type represents a read-only texture.
+     *
+     * Note: `readonly texture2D` (TextureAccess::kRead) can represent either:
+     *  - A read-only storage image (if declared with a pixel-format layout like `layout(rgba8)`)
+     *  - A standalone sampled texture (if declared without a pixel-format layout)
+     */
+    bool isReadOnlyTexture() const {
+        return fTypeKind == TypeKind::kTexture &&
+               this->dimensions() != SpvDimSubpassData &&
+               this->textureAccess() == TextureAccess::kRead;
     }
 
     /**

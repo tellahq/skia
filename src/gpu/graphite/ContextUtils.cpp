@@ -10,13 +10,13 @@
 #include "include/core/SkBlendMode.h"
 #include "include/core/SkM44.h"
 #include "include/core/SkRect.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkString.h"
 #include "include/gpu/GpuTypes.h"
 #include "include/gpu/graphite/Recorder.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
 #include "src/gpu/BlendFormula.h"
 #include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/ComputeTypes.h"
@@ -194,7 +194,7 @@ std::string BuildComputeSkSL(const Caps* caps, const ComputeStep* step, BackendA
                 sksl += r.fSkSL;
                 break;
             case Type::kReadOnlyTexture:
-                SkSL::String::appendf(&sksl, "layout(binding=%d, rgba8) readonly texture2D ",
+                SkSL::String::appendf(&sksl, "layout(binding=%d) readonly texture2D ",
                                       texturesUseDistinctIdxRanges ? texIdx++ : index++);
                 sksl += r.fSkSL;
                 break;

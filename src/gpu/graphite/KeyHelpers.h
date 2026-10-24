@@ -35,7 +35,6 @@ class SkRuntimeEffect;
 namespace skgpu::graphite {
 
 class DrawContext;
-class FloatStorageManager;
 class PipelineDataGatherer;
 class UniquePaintParamsID;
 
@@ -309,11 +308,13 @@ struct ColorSpaceTransformBlock {
         }
         SkColorSpaceXformSteps fSteps;
         Swizzle                fReadSwizzle = Swizzle::RGBA();
+        bool                   fIsAlphaOnly = false;
     };
 
     static void AddBlock(const KeyContext&, const ColorSpaceTransformData&);
 };
 
+#if defined(SK_GRAPHITE_USE_LEGACY_RRECT_CLIP_SHADER)
 struct NonMSAAClipBlock {
     struct NonMSAAClipData {
         NonMSAAClipData(SkRect rect,
@@ -343,12 +344,19 @@ struct NonMSAAClipBlock {
 
     static void AddBlock(const KeyContext&, const NonMSAAClipData&);
 };
+#else
+// Adds either just AnalyticClip or kAnalyticAndAtlasClip block depending on the state of the clip.
+void AddAnalyticClip(const KeyContext&, const NonMSAAClip&);
+#endif
 
 /**
  * Adds a block that references the primitive color produced by the RenderStep and accounts for
  * color space transformation.
  */
-void AddPrimitiveColor(const KeyContext&, bool skipColorXform);
+void AddPrimitiveColor(const KeyContext&,
+                       bool skipColorXform,
+                       SkColorSpace* primitiveColorSpace = nullptr,
+                       SkAlphaType primitiveAlphaType = kPremul_SkAlphaType);
 
 /**
  * Blend mode color filters blend their input (as the dst color) with some given color (supplied
@@ -384,6 +392,12 @@ struct RuntimeEffectBlock {
 
     // Add a post-amble for runtime effects that use the toLinearSrgb/fromLinearSrgb intrinsics
     static void HandleIntrinsics(const KeyContext&, const SkRuntimeEffect*);
+};
+
+struct MeshShaderBlock {
+    static void AddBlock(const KeyContext&,
+                         const SkMeshSpecification*,
+                         SkSpan<const SkRuntimeEffect::ChildPtr> children);
 };
 
 void AddToKey(const KeyContext&, const SkBlender*);

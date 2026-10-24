@@ -7,12 +7,14 @@
 
 #include "bench/Benchmark.h"
 #include "include/core/SkCanvas.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
+
+#include <array>
 
 class QuickRejectBench : public Benchmark {
     enum { N = 1000000 };
     float fFloats[N];
-    int   fInts  [N];
+    std::array<int, N> fInts;
 
     const char* onGetName() override { return "quick_reject"; }
     bool isSuitableFor(Backend backend) override { return backend != Backend::kNonRendering; }

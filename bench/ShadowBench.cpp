@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,6 +11,8 @@
 #include "include/core/SkRRect.h"
 #include "include/utils/SkShadowUtils.h"
 #include "src/core/SkDrawShadowInfo.h"
+
+#include <array>
 
 class ShadowBench : public Benchmark {
 // Draws a set of shadowed rrects filling the canvas, in various modes:
@@ -36,12 +38,8 @@ protected:
     };
 
     void computeName(const char root[]) {
-        static const char kTransChars[2] = {
-            'o', 't'
-        };
-        static const char kGeomChars[2] = {
-            'a', 'g'
-        };
+        static constexpr std::array<char, 2> kTransChars = {'o', 't'};
+        static constexpr std::array<char, 2> kGeomChars = {'a', 'g'};
 
         fBaseName.printf("%s_%c_%c", root, kTransChars[fTransparent], kGeomChars[fForceGeometric]);
     }
@@ -91,7 +89,7 @@ protected:
 private:
     SkString fBaseName;
 
-    SkPath  fRRects[kNumRRects];
+    std::array<SkPath, kNumRRects> fRRects;
     SkDrawShadowRec fRec;
     int    fTransparent;
     int    fForceGeometric;

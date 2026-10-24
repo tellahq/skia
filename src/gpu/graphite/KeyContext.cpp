@@ -17,7 +17,6 @@
 namespace skgpu::graphite {
 
 KeyContext::KeyContext(const Caps* caps,
-                       FloatStorageManager* floatStorageManager,
                        PaintParamsKeyBuilder* paintParamsKeyBuilder,
                        PipelineDataGatherer* pipelineDataGatherer,
                        ShaderCodeDictionary* dict,
@@ -25,7 +24,6 @@ KeyContext::KeyContext(const Caps* caps,
                        const SkColorInfo& dstColorInfo)
         : fCaps(caps)
         , fRecorder(nullptr)
-        , fFloatStorageManager(floatStorageManager)
         , fPaintParamsKeyBuilder(paintParamsKeyBuilder)
         , fPipelineDataGatherer(pipelineDataGatherer)
         , fDictionary(dict)
@@ -34,25 +32,25 @@ KeyContext::KeyContext(const Caps* caps,
 
 KeyContext::KeyContext(skgpu::graphite::Recorder* recorder,
                        DrawContext* drawContext,
-                       FloatStorageManager* floatStorageManager,
                        PaintParamsKeyBuilder* paintParamsKeyBuilder,
                        PipelineDataGatherer* pipelineDataGatherer,
                        const SkM44& local2Dev,
+                       const SkRect& clipDrawBounds,
                        const SkColorInfo& dstColorInfo,
                        SkEnumBitMask<KeyGenFlags> initialFlags,
                        const SkColor4f& paintColor)
         : fCaps(recorder->priv().caps())
         , fRecorder(recorder)
         , fDC(drawContext)
-        , fFloatStorageManager(floatStorageManager)
         , fPaintParamsKeyBuilder(paintParamsKeyBuilder)
         , fPipelineDataGatherer(pipelineDataGatherer)
         , fDictionary(recorder->priv().shaderCodeDictionary())
         , fRTEffectDict(recorder->priv().runtimeEffectDictionary())
         , fLocal2Dev(local2Dev)
+        , fClipDrawBounds(clipDrawBounds)
         , fLocalMatrix(nullptr)
         , fDstColorInfo(dstColorInfo)
-        , fKeyGenFlags(initialFlags) {\
+        , fKeyGenFlags(initialFlags) {
     fPaintColor = PaintParams::Color4fPrepForDst(paintColor, fDstColorInfo).makeOpaque().premul();
     fPaintColor.fA = paintColor.fA;
 }
@@ -62,12 +60,12 @@ KeyContext::KeyContext(const KeyContext& other,
         : fCaps(other.fCaps)
         , fRecorder(other.fRecorder)
         , fDC(other.fDC)
-        , fFloatStorageManager(other.fFloatStorageManager)
         , fPaintParamsKeyBuilder(other.fPaintParamsKeyBuilder)
         , fPipelineDataGatherer(other.fPipelineDataGatherer)
         , fDictionary(other.fDictionary)
         , fRTEffectDict(other.fRTEffectDict)
         , fLocal2Dev(other.fLocal2Dev)
+        , fClipDrawBounds(other.fClipDrawBounds)
         , fLocalMatrix(other.fLocalMatrix)
         , fDstColorInfo(other.fDstColorInfo)
         , fPaintColor(other.fPaintColor)
@@ -75,21 +73,31 @@ KeyContext::KeyContext(const KeyContext& other,
 
 KeyContext::~KeyContext() {}
 
+KeyContext& KeyContext::operator=(const KeyContext&) = default;
+
 sk_sp<RuntimeEffectDictionary> KeyContext::rtEffectDict() const { return fRTEffectDict; }
 
+// Runtime effects always disable paint-color colorization of alpha-only image shaders
+static constexpr SkEnumBitMask<KeyGenFlags> kRuntimeEffectChildDefaultFlags
+        = KeyGenFlags::kDisableAlphaOnlyImageColorization;
+
 KeyContext KeyContext::forRuntimeEffect(const SkRuntimeEffect* effect, int child) const {
-    // Runtime effects always disable paint-color colorization of alpha-only image shaders
-    SkEnumBitMask<KeyGenFlags> xtraFlags = KeyGenFlags::kDisableAlphaOnlyImageColorization;
+    SkEnumBitMask<KeyGenFlags> xtraFlags = kRuntimeEffectChildDefaultFlags;
 
     if (SkRuntimeEffectPriv::ChildSampleUsage(effect, child).isExplicit()) {
         // Assume explicit sampling as a proxy for either a likely data lookup (e.g. raw shader)
         // or an effect that might sample the child many times. This means it's worth using
         // eliding colorspace conversions, and we have to disable sampling optimization.
-        xtraFlags |= KeyGenFlags::kEnableIdentityColorSpaceXform |
+        xtraFlags |= KeyGenFlags::kSpecializeColorSpaceXform |
                      KeyGenFlags::kDisableSamplingOptimization;
     }
 
     return this->withExtraFlags(xtraFlags);
+}
+
+KeyContext KeyContext::forMeshSpecChild() const {
+    return this->withExtraFlags(kRuntimeEffectChildDefaultFlags |
+                                KeyGenFlags::kDisableSamplingOptimization);
 }
 
 } // namespace skgpu::graphite

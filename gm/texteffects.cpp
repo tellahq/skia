@@ -20,13 +20,14 @@
 #include "include/core/SkTextBlob.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTDArray.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTDArray.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
 #include "tools/ToolUtils.h"
 #include "tools/fonts/FontToolUtils.h"
 
+#include <array>
 #include <string.h>
 
 using namespace skia_private;
@@ -114,7 +115,7 @@ sk_sp<SkTextBlob> MakeFancyBlob(const SkPaint& paint, const SkFont& font, const 
 DEF_SIMPLE_GM(fancyblobunderline, canvas, 1480, 1380) {
     SkPaint paint;
     paint.setAntiAlias(true);
-    const char* fam[] = { "sans-serif", "serif", "monospace" };
+    static constexpr auto fam = std::to_array<const char*>({"sans-serif", "serif", "monospace"});
     const char test[] = "aAjJgGyY_|{-(~[,]qQ}pP}zZ";
     const SkPoint blobOffset = { 10, 80 };
 
@@ -219,7 +220,7 @@ static void draw_blob_adorned(SkCanvas* canvas, sk_sp<SkTextBlob> blob) {
 
     AutoTArray<SkScalar> intervals(count);
     blob->getIntercepts(yminmax, intervals.get());
-    count = trim_with_halo(intervals.get(), count, SkScalarHalf(yminmax[1] - yminmax[0]) * 1.5f);
+    count = trim_with_halo(intervals.get(), count, ((yminmax[1] - yminmax[0]) / 2.f) * 1.5f);
     SkASSERT(count >= 2);
 
     const SkScalar y = sk_float_midpoint(yminmax[0], yminmax[1]);

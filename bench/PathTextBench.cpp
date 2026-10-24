@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -10,12 +10,14 @@
 #include "include/core/SkFont.h"
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "src/core/SkStrike.h"
 #include "src/core/SkStrikeCache.h"
 #include "src/core/SkStrikeSpec.h"
 #include "tools/ToolUtils.h"
 #include "tools/fonts/FontToolUtils.h"
+
+#include <array>
 
 static constexpr int kScreenWidth = 1500;
 static constexpr int kScreenHeight = 1500;
@@ -104,9 +106,9 @@ private:
     const bool fClipped;
     const bool fUncached;
     SkString fName;
-    SkPath fGlyphs[kNumGlyphs];
-    SkPaint fPaints[kNumDraws];
-    SkMatrix fXforms[kNumDraws];
+    std::array<SkPath, kNumGlyphs> fGlyphs;
+    std::array<SkPaint, kNumDraws> fPaints;
+    std::array<SkMatrix, kNumDraws> fXforms;
     SkPath fClipPath;
 
     using INHERITED = Benchmark;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Google Inc.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -7,8 +7,8 @@
 
 #include "include/gpu/vk/VulkanPreferredFeatures.h"
 
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
 #include "src/gpu/vk/VulkanUtilsPriv.h"
 
 #include <cstdint>
@@ -596,6 +596,9 @@ void VulkanPreferredFeatures::addFeaturesToQuery(const VkExtensionProperties* de
     if (exts.fExternalMemoryAHardwareBufferEXT) {
         fExternalMemoryAHardwareBufferExtension =
                 VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME;
+    }
+    if (exts.fQueueFamilyForeignEXT) {
+        fQueueFamilyForeignExtension = VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME;
     }
 #endif
     if (exts.fFrameBoundaryEXT) {

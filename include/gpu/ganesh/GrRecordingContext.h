@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -12,7 +12,7 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkString.h" // IWYU pragma: keep
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "include/private/gpu/ganesh/GrContext_Base.h"
 #include "include/private/gpu/ganesh/GrImageContext.h"
 
@@ -37,9 +37,8 @@ class SkGaneshRecorder;
 class SkRecorder;
 
 namespace skcpu {
-class ContextImpl;
 class Recorder;
-}  // namespace skcpu
+}
 
 namespace sktext::gpu {
 class SubRunAllocator;
@@ -67,6 +66,7 @@ public:
             colorType == kA16_unorm_SkColorType          ||
             colorType == kA16_float_SkColorType          ||
             colorType == kR16_unorm_SkColorType          ||
+            colorType == kR16_float_SkColorType          ||
             colorType == kR16G16_float_SkColorType       ||
             colorType == kR16G16B16A16_unorm_SkColorType ||
             colorType == kGray_8_SkColorType) {
@@ -278,9 +278,9 @@ protected:
 private:
     OwnedArenas                       fArenas;
 
+    std::unique_ptr<GrProxyProvider> fProxyProvider;
+    // Depends on fProxyProvider (drawing tasks reference proxies). Must be destroyed first.
     std::unique_ptr<GrDrawingManager> fDrawingManager;
-    std::unique_ptr<GrProxyProvider>  fProxyProvider;
-    std::unique_ptr<const skcpu::ContextImpl> fCPUContext;
     std::unique_ptr<SkGaneshRecorder> fRecorder;
 
 #if defined(GPU_TEST_UTILS)

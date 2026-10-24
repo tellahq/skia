@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -10,9 +10,9 @@
 #include "include/core/SkPoint.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTo.h"
 #include "modules/jsonreader/SkJSONReader.h"
 #include "modules/skottie/include/Skottie.h"
 #include "modules/skottie/src/Adapter.h"
@@ -100,10 +100,10 @@ private:
 
 sk_sp<sksg::GeometryNode> ShapeBuilder::AttachPolystarGeometry(const skjson::ObjectValue& jstar,
                                                                const AnimationBuilder* abuilder) {
-    static constexpr PolystarGeometryAdapter::Type gTypes[] = {
-        PolystarGeometryAdapter::Type::kStar, // "sy": 1
-        PolystarGeometryAdapter::Type::kPoly, // "sy": 2
-    };
+    static constexpr auto gTypes = std::to_array<PolystarGeometryAdapter::Type>({
+            PolystarGeometryAdapter::Type::kStar,  // "sy": 1
+            PolystarGeometryAdapter::Type::kPoly,  // "sy": 2
+    });
 
     const auto type = ParseDefault<size_t>(jstar["sy"], 0) - 1;
     if (type >= std::size(gTypes)) {

@@ -19,13 +19,13 @@ from . import docker
 class BuildApi(recipe_api.RecipeApi):
   def __init__(self, buildername, *args, **kwargs):
     b = buildername
-    if 'Android' in b and not 'Flutter' in b:
+    if 'Android' in b and not 'Flutter' in b and not 'RustPNG' in b:
       self.compile_fn = android.compile_fn
       self.copy_fn = android.copy_build_products
     elif 'Chromebook' in b:
       self.compile_fn = chromebook.compile_fn
       self.copy_fn = chromebook.copy_build_products
-    elif 'EMCC' in b:
+    elif 'EMCC' in b and not 'StandaloneWasm' in b:
       self.compile_fn = canvaskit.compile_fn
       self.copy_fn = canvaskit.copy_build_products
     elif 'CMake' in b:

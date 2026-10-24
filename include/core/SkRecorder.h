@@ -7,7 +7,9 @@
 #ifndef SkRecorder_DEFINED
 #define SkRecorder_DEFINED
 
-#include "include/private/base/SkAPI.h"
+#include "include/core/SkPicture.h"
+#include "include/private/SkAPI.h"
+#include "include/private/SkTArray.h"
 
 class SkCanvas;
 class SkSurface;
@@ -34,14 +36,21 @@ public:
 
     virtual skcpu::Recorder* cpuRecorder() = 0;
 
+protected:
+    skia_private::TArray<sk_sp<SkPicture>> fCapturedPictures;
+
 private:
 
     /**
     * Attempts to create and return an SkCaptureCanvas that wraps the provided base canvas.
     * Returns nullptr if capture is not enabled.
+    *
+    * TODO: When implementing in all Recorder subclasses, see if the implementations can be shared
+    * and moved here.
     */
     virtual SkCanvas* makeCaptureCanvas(SkCanvas*) = 0;
     virtual void createCaptureBreakpoint(SkSurface*) = 0;
+    virtual void deregisterCaptureCanvas(SkCanvas*) = 0;
 
     friend class SkSurface_Base; // for capture functionality
 };

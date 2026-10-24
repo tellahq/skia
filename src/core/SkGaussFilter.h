@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -8,6 +8,7 @@
 #ifndef SkGaussFilter_DEFINED
 #define SkGaussFilter_DEFINED
 
+#include <array>
 #include <cstddef>
 
 // Define gaussian filters for values of sigma < 2. Produce values good to 1 part in 1,000,000.
@@ -27,7 +28,7 @@ public:
     const double* end()   const { return &fBasis[fN]; }
 
 private:
-    double fBasis[kGaussArrayMax];
+    std::array<double, kGaussArrayMax> fBasis;
     int    fN;
 };
 

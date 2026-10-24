@@ -8,12 +8,12 @@
 #include "src/gpu/graphite/render/PerEdgeAAQuadRenderStep.h"
 
 #include "include/core/SkM44.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkVx.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
+#include "include/private/SkFloatingPoint.h"
 #include "src/core/SkSLTypeShared.h"
+#include "src/core/SkVx.h"
 #include "src/gpu/BufferWriter.h"
 #include "src/gpu/graphite/Attribute.h"
 #include "src/gpu/graphite/BufferManager.h"
@@ -220,6 +220,7 @@ PerEdgeAAQuadRenderStep::PerEdgeAAQuadRenderStep(Layout layout, StaticBufferMana
                              {"mat0", VertexAttribType::kFloat3, SkSLType::kFloat3},
                              {"mat1", VertexAttribType::kFloat3, SkSLType::kFloat3},
                              {"mat2", VertexAttribType::kFloat3, SkSLType::kFloat3}}},
+                     /*storageUniforms=*/{},
                      /*varyings=*/{{
                              // Device-space distance to LTRB edges of quad.
                              {"edgeDistances", SkSLType::kFloat4}, // distance to LTRB edges
@@ -235,7 +236,7 @@ PerEdgeAAQuadRenderStep::PerEdgeAAQuadRenderStep(Layout layout, StaticBufferMana
 
 PerEdgeAAQuadRenderStep::~PerEdgeAAQuadRenderStep() {}
 
-std::string PerEdgeAAQuadRenderStep::vertexSkSL() const {
+std::string PerEdgeAAQuadRenderStep::vertexSkSL(const RootNodesInfo&) const {
     // Returns the body of a vertex function, which must define a float4 devPosition variable and
     // must write to an already-defined float2 stepLocalCoords variable.
     return "float4 devPosition = per_edge_aa_quad_vertex_fn("
@@ -257,6 +258,7 @@ const char* PerEdgeAAQuadRenderStep::fragmentCoverageSkSL() const {
 }
 
 void PerEdgeAAQuadRenderStep::writeVertices(DrawWriter* writer,
+                                           StorageContext* /*storageContext*/,
                                            const DrawParams& params,
                                            uint32_t ssboIndex) const {
     SkASSERT(params.geometry().isEdgeAAQuad());

@@ -35,6 +35,12 @@
 
 using namespace skcms_private;
 
+// A potential vulnerability exists where a large CLUT can cause an integer
+// overflow in skcms's transformation logic. Limit the total number of grid
+// points to a safe value. 350 million ensures that 6 * index will not overflow
+// a 32-bit signed integer (which is what AVX2/AVX-512 gather expects).
+#define SKCMS_MAX_GRID_POINTS 350000000
+
 static bool sAllowRuntimeCPUDetection = true;
 
 void skcms_DisableRuntimeCPUDetection() {
@@ -363,9 +369,11 @@ enum {
     skcms_Signature_WTPT = 0x77747074,
 
     skcms_Signature_CICP = 0x63696370,
+    skcms_Signature_HAGC = 0x48414743,
 
     // Type signatures
     skcms_Signature_curv = 0x63757276,
+    skcms_Signature_hagc = 0x68616763,
     skcms_Signature_mft1 = 0x6D667431,
     skcms_Signature_mft2 = 0x6D667432,
     skcms_Signature_mAB  = 0x6D414220,
@@ -757,11 +765,13 @@ static bool read_mft_common(const mft_CommonLayout* mftTag, skcms_A2B* a2b) {
         return false;
     }
 
+    uint64_t total_grid_points = 1;
     for (uint32_t i = 0; i < a2b->input_channels; ++i) {
         a2b->grid_points[i] = mftTag->grid_points[0];
+        total_grid_points *= a2b->grid_points[i];
     }
     // The grid only makes sense with at least two points along each axis
-    if (a2b->grid_points[0] < 2) {
+    if (a2b->grid_points[0] < 2 || total_grid_points > SKCMS_MAX_GRID_POINTS) {
         return false;
     }
     return true;
@@ -784,10 +794,12 @@ static bool read_mft_common(const mft_CommonLayout* mftTag, skcms_B2A* b2a) {
     }
 
     // Same as A2B.
+    uint64_t total_grid_points = 1;
     for (uint32_t i = 0; i < b2a->input_channels; ++i) {
         b2a->grid_points[i] = mftTag->grid_points[0];
+        total_grid_points *= b2a->grid_points[i];
     }
-    if (b2a->grid_points[0] < 2) {
+    if (b2a->grid_points[0] < 2 || total_grid_points > SKCMS_MAX_GRID_POINTS) {
         return false;
     }
     return true;
@@ -938,7 +950,8 @@ typedef struct {
     uint8_t variable             [1/*variable*/];
 } CLUT_Layout;
 
-static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xyz) {
+static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xyz,
+                         const uint8_t* endOfBuffer) {
     if (tag->size < SAFE_SIZEOF(mAB_or_mBA_Layout)) {
         return false;
     }
@@ -1035,6 +1048,7 @@ static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xy
         }
 
         uint64_t grid_size = a2b->output_channels * clut->grid_byte_width[0];  // the payload
+        uint64_t total_grid_points = 1;
         for (uint32_t i = 0; i < a2b->input_channels; ++i) {
             a2b->grid_points[i] = clut->grid_points[i];
             // The grid only makes sense with at least two points along each axis
@@ -1042,8 +1056,25 @@ static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xy
                 return false;
             }
             grid_size *= a2b->grid_points[i];
+            total_grid_points *= a2b->grid_points[i];
         }
-        if (tag->size < clut_offset + SAFE_FIXED_SIZE(CLUT_Layout) + grid_size) {
+
+        if (total_grid_points > SKCMS_MAX_GRID_POINTS) {
+            return false;
+        }
+
+        const uint64_t table_size = clut_offset + SAFE_FIXED_SIZE(CLUT_Layout) + grid_size;
+        if (table_size > tag->size) {
+            return false;
+        }
+
+        // gather_24 and gather_48 read 1 or 2 extra bytes.
+        // We must ensure that those extra bytes are within the provided buffer limit.
+        uint32_t slack = 0;
+        if (a2b->output_channels == 3) {
+            slack = clut->grid_byte_width[0] == 1 ? 1 : 2;
+        }
+        if (tag->buf + table_size + slack > endOfBuffer) {
             return false;
         }
     } else {
@@ -1065,7 +1096,8 @@ static bool read_tag_mab(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xy
 
 // Exactly the same as read_tag_mab(), except where there are comments.
 // TODO: refactor the two to eliminate common code?
-static bool read_tag_mba(const skcms_ICCTag* tag, skcms_B2A* b2a, bool pcs_is_xyz) {
+static bool read_tag_mba(const skcms_ICCTag* tag, skcms_B2A* b2a, bool pcs_is_xyz,
+                         const uint8_t* endOfBuffer) {
     if (tag->size < SAFE_SIZEOF(mAB_or_mBA_Layout)) {
         return false;
     }
@@ -1162,14 +1194,31 @@ static bool read_tag_mba(const skcms_ICCTag* tag, skcms_B2A* b2a, bool pcs_is_xy
         }
 
         uint64_t grid_size = b2a->output_channels * clut->grid_byte_width[0];
+        uint64_t total_grid_points = 1;
         for (uint32_t i = 0; i < b2a->input_channels; ++i) {
             b2a->grid_points[i] = clut->grid_points[i];
             if (b2a->grid_points[i] < 2) {
                 return false;
             }
             grid_size *= b2a->grid_points[i];
+            total_grid_points *= b2a->grid_points[i];
         }
+
+        if (total_grid_points > SKCMS_MAX_GRID_POINTS) {
+            return false;
+        }
+
         if (tag->size < clut_offset + SAFE_FIXED_SIZE(CLUT_Layout) + grid_size) {
+            return false;
+        }
+
+        // gather_24 and gather_48 read 1 or 2 extra bytes.
+        // We must ensure that those extra bytes are within the provided buffer limit.
+        uint32_t slack = 0;
+        if (b2a->output_channels == 3) {
+            slack = clut->grid_byte_width[0] == 1 ? 1 : 2;
+        }
+        if (tag->buf + clut_offset + SAFE_FIXED_SIZE(CLUT_Layout) + grid_size + slack > endOfBuffer) {
             return false;
         }
     } else {
@@ -1241,71 +1290,18 @@ static int fit_linear(const skcms_Curve* curve, int N, float tol,
     return lin_points;
 }
 
-// If this skcms_Curve holds an identity table, rewrite it as an identity skcms_TransferFunction.
-static void canonicalize_identity(skcms_Curve* curve) {
-    if (curve->table_entries && curve->table_entries <= (uint32_t)INT_MAX) {
-        int N = (int)curve->table_entries;
-
-        float c = 0.0f, d = 0.0f, f = 0.0f;
-        if (N == fit_linear(curve, N, 1.0f/static_cast<float>(2*N), &c,&d,&f)
-            && c == 1.0f
-            && f == 0.0f) {
-            curve->table_entries = 0;
-            curve->table_8       = nullptr;
-            curve->table_16      = nullptr;
-            curve->parametric    = skcms_TransferFunction{1,1,0,0,0,0,0};
-        }
-    }
+static bool read_a2b(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xyz, const uint8_t* eob) {
+    if (tag->type == skcms_Signature_mft1) { return read_tag_mft1(tag, a2b); }
+    if (tag->type == skcms_Signature_mft2) { return read_tag_mft2(tag, a2b); }
+    if (tag->type == skcms_Signature_mAB ) { return read_tag_mab(tag, a2b, pcs_is_xyz, eob); }
+    return false;
 }
 
-static bool read_a2b(const skcms_ICCTag* tag, skcms_A2B* a2b, bool pcs_is_xyz) {
-    bool ok = false;
-    if (tag->type == skcms_Signature_mft1) { ok = read_tag_mft1(tag, a2b); }
-    if (tag->type == skcms_Signature_mft2) { ok = read_tag_mft2(tag, a2b); }
-    if (tag->type == skcms_Signature_mAB ) { ok = read_tag_mab(tag, a2b, pcs_is_xyz); }
-    if (!ok) {
-        return false;
-    }
-
-    if (a2b->input_channels > 0) { canonicalize_identity(a2b->input_curves + 0); }
-    if (a2b->input_channels > 1) { canonicalize_identity(a2b->input_curves + 1); }
-    if (a2b->input_channels > 2) { canonicalize_identity(a2b->input_curves + 2); }
-    if (a2b->input_channels > 3) { canonicalize_identity(a2b->input_curves + 3); }
-
-    if (a2b->matrix_channels > 0) { canonicalize_identity(a2b->matrix_curves + 0); }
-    if (a2b->matrix_channels > 1) { canonicalize_identity(a2b->matrix_curves + 1); }
-    if (a2b->matrix_channels > 2) { canonicalize_identity(a2b->matrix_curves + 2); }
-
-    if (a2b->output_channels > 0) { canonicalize_identity(a2b->output_curves + 0); }
-    if (a2b->output_channels > 1) { canonicalize_identity(a2b->output_curves + 1); }
-    if (a2b->output_channels > 2) { canonicalize_identity(a2b->output_curves + 2); }
-
-    return true;
-}
-
-static bool read_b2a(const skcms_ICCTag* tag, skcms_B2A* b2a, bool pcs_is_xyz) {
-    bool ok = false;
-    if (tag->type == skcms_Signature_mft1) { ok = read_tag_mft1(tag, b2a); }
-    if (tag->type == skcms_Signature_mft2) { ok = read_tag_mft2(tag, b2a); }
-    if (tag->type == skcms_Signature_mBA ) { ok = read_tag_mba(tag, b2a, pcs_is_xyz); }
-    if (!ok) {
-        return false;
-    }
-
-    if (b2a->input_channels > 0) { canonicalize_identity(b2a->input_curves + 0); }
-    if (b2a->input_channels > 1) { canonicalize_identity(b2a->input_curves + 1); }
-    if (b2a->input_channels > 2) { canonicalize_identity(b2a->input_curves + 2); }
-
-    if (b2a->matrix_channels > 0) { canonicalize_identity(b2a->matrix_curves + 0); }
-    if (b2a->matrix_channels > 1) { canonicalize_identity(b2a->matrix_curves + 1); }
-    if (b2a->matrix_channels > 2) { canonicalize_identity(b2a->matrix_curves + 2); }
-
-    if (b2a->output_channels > 0) { canonicalize_identity(b2a->output_curves + 0); }
-    if (b2a->output_channels > 1) { canonicalize_identity(b2a->output_curves + 1); }
-    if (b2a->output_channels > 2) { canonicalize_identity(b2a->output_curves + 2); }
-    if (b2a->output_channels > 3) { canonicalize_identity(b2a->output_curves + 3); }
-
-    return true;
+static bool read_b2a(const skcms_ICCTag* tag, skcms_B2A* b2a, bool pcs_is_xyz, const uint8_t* eob) {
+    if (tag->type == skcms_Signature_mft1) { return read_tag_mft1(tag, b2a); }
+    if (tag->type == skcms_Signature_mft2) { return read_tag_mft2(tag, b2a); }
+    if (tag->type == skcms_Signature_mBA ) { return read_tag_mba(tag, b2a, pcs_is_xyz, eob); }
+    return false;
 }
 
 typedef struct {
@@ -1331,9 +1327,31 @@ static bool read_cicp(const skcms_ICCTag* tag, skcms_CICP* cicp) {
     return true;
 }
 
+typedef struct {
+    uint8_t type                     [4];
+    uint8_t reserved                 [4];
+    uint8_t size                     [4];
+} HAGC_Layout;
+
+static bool read_hagc(const skcms_ICCTag* tag, skcms_HAGC* hagc) {
+    if (tag->type != skcms_Signature_hagc || tag->size < SAFE_SIZEOF(HAGC_Layout)) {
+        return false;
+    }
+
+    const HAGC_Layout* hagcTag = (const HAGC_Layout*)tag->buf;
+    uint32_t size = read_big_u32(hagcTag->size);
+    if (size > tag->size - SAFE_SIZEOF(HAGC_Layout)) {
+        return false;
+    }
+
+    hagc->size   = size;
+    hagc->buffer = tag->buf + sizeof(HAGC_Layout);
+    return true;
+}
+
 void skcms_GetTagByIndex(const skcms_ICCProfile* profile, uint32_t idx, skcms_ICCTag* tag) {
     if (!profile || !profile->buffer || !tag) { return; }
-    if (idx > profile->tag_count) { return; }
+    if (idx >= profile->tag_count) { return; }
     const tag_Layout* tags = get_tag_table(profile);
     tag->signature = read_big_u32(tags[idx].signature);
     tag->size      = read_big_u32(tags[idx].size);
@@ -1466,6 +1484,7 @@ bool skcms_ParseWithA2BPriority(const void* buf, size_t len,
         }
     }
 
+    const uint8_t* endOfBuffer = (const uint8_t*)buf + len;
     for (int i = 0; i < priorities; i++) {
         // enum { perceptual, relative_colormetric, saturation }
         if (priority[i] < 0 || priority[i] > 2) {
@@ -1474,7 +1493,7 @@ bool skcms_ParseWithA2BPriority(const void* buf, size_t len,
         uint32_t sig = skcms_Signature_A2B0 + static_cast<uint32_t>(priority[i]);
         skcms_ICCTag tag;
         if (skcms_GetTagBySignature(profile, sig, &tag)) {
-            if (!read_a2b(&tag, &profile->A2B, pcs_is_xyz)) {
+            if (!read_a2b(&tag, &profile->A2B, pcs_is_xyz, endOfBuffer)) {
                 // Malformed A2B tag
                 return false;
             }
@@ -1491,7 +1510,7 @@ bool skcms_ParseWithA2BPriority(const void* buf, size_t len,
         uint32_t sig = skcms_Signature_B2A0 + static_cast<uint32_t>(priority[i]);
         skcms_ICCTag tag;
         if (skcms_GetTagBySignature(profile, sig, &tag)) {
-            if (!read_b2a(&tag, &profile->B2A, pcs_is_xyz)) {
+            if (!read_b2a(&tag, &profile->B2A, pcs_is_xyz, endOfBuffer)) {
                 // Malformed B2A tag
                 return false;
             }
@@ -1507,6 +1526,15 @@ bool skcms_ParseWithA2BPriority(const void* buf, size_t len,
             return false;
         }
         profile->has_CICP = true;
+    }
+
+    skcms_ICCTag hagc_tag;
+    if (skcms_GetTagBySignature(profile, skcms_Signature_HAGC, &hagc_tag)) {
+        if (!read_hagc(&hagc_tag, &profile->HAGC)) {
+            // Malformed HAGC tag
+            return false;
+        }
+        profile->has_HAGC = true;
     }
 
     return usable_as_src(profile);
@@ -1601,12 +1629,14 @@ const skcms_ICCProfile* skcms_sRGB_profile() {
         },
 
         { 0, 0, 0, 0 },  // an empty CICP
+        { 0, nullptr },  // an empty HAGC
 
         true,  // has_trc
         true,  // has_toXYZD50
         false, // has_A2B
         false, // has B2A
         false, // has_CICP
+        false, // has_HAGC
     };
     return &sRGB_profile;
 }
@@ -1698,12 +1728,14 @@ const skcms_ICCProfile* skcms_XYZD50_profile() {
         },
 
         { 0, 0, 0, 0 },  // an empty CICP
+        { 0, nullptr },  // an empty HAGC
 
         true,  // has_trc
         true,  // has_toXYZD50
         false, // has_A2B
         false, // has B2A
         false, // has_CICP
+        false, // has_HAGC
     };
 
     return &XYZD50_profile;
@@ -2735,20 +2767,28 @@ bool skcms_Transform(const void*             src,
     }
     // TODO: more careful alias rejection (like, dst == src + 1)?
 
-    Op          program[32];
-    const void* context[32];
+    Op          program[SKCMS_MAX_PROGRAM_OPS];
+    const void* context[SKCMS_MAX_PROGRAM_OPS];
 
     Op*          ops      = program;
     const void** contexts = context;
 
     auto add_op = [&](Op o) {
-        *ops++ = o;
-        *contexts++ = nullptr;
+        if (ops < program + ARRAY_COUNT(program)) {
+            *ops = o;
+            *contexts = nullptr;
+        }
+        ops++;
+        contexts++;
     };
 
     auto add_op_ctx = [&](Op o, const void* c) {
-        *ops++ = o;
-        *contexts++ = c;
+        if (ops < program + ARRAY_COUNT(program)) {
+            *ops = o;
+            *contexts = c;
+        }
+        ops++;
+        contexts++;
     };
 
     auto add_curve_ops = [&](const skcms_Curve* curves, int numChannels) -> bool {
@@ -3067,6 +3107,9 @@ bool skcms_Transform(const void*             src,
 
     assert(ops      <= program + ARRAY_COUNT(program));
     assert(contexts <= context + ARRAY_COUNT(context));
+    if (ops > program + ARRAY_COUNT(program)) {
+        return false;
+    }
 
     auto run = baseline::run_program;
     switch (cpu_type()) {

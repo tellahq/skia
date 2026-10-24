@@ -10,11 +10,10 @@
 #include "include/core/SkPathBuilder.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMalloc.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMalloc.h"
 #include "src/core/SkPathPriv.h"
-#include "src/core/SkRRectPriv.h"
 
 #include <cstring>
 
@@ -73,7 +72,7 @@ bool Shape::conservativeContains(skvx::float2 point) const {
         case Type::kEmpty: return false;
         case Type::kLine:  return false;
         case Type::kRect:  return fRect.contains(Rect::Point(point));
-        case Type::kRRect: return SkRRectPriv::ContainsPoint(fRRect, {point.x(), point.y()});
+        case Type::kRRect: return fRRect.contains(SkPoint::Make(point.x(), point.y()));
         case Type::kPath:  // We need to ensure the path is non-inverted.
                            if (this->inverted()) {
                                SkPath nonInverted(fPath);
@@ -183,8 +182,8 @@ void write_path_key_from_data(const SkPath& path, uint32_t* origKey) {
 }
 } // anonymous namespace
 
-int Shape::keySize() const {
-    int count = 1; // Every key has the state flags from the Shape
+uint16_t Shape::keySize() const {
+    uint16_t count = 1; // Every key has the state flags from the Shape
     switch(this->type()) {
         case Type::kLine:
             static_assert(0 == sizeof(skvx::float4) % sizeof(uint32_t));
@@ -207,9 +206,9 @@ int Shape::keySize() const {
             if (!this->path().isEmpty()) {
                 int dataKeySize = path_key_from_data_size(this->path());
                 if (dataKeySize >= 0) {
-                    count += dataKeySize;
+                    count += SkTo<uint16_t>(dataKeySize);
                 } else {
-                    count++; // Just adds the gen ID.
+                    count += sizeof(uint64_t) / sizeof(uint32_t); // Just adds the gen ID.
                 }
             }
             break;
@@ -243,7 +242,9 @@ void Shape::writeKey(uint32_t* key, bool includeInverted) const {
                     write_path_key_from_data(this->path(), key);
                     return;
                 } else {
-                    *key++ = this->path().getGenerationID();
+                    uint64_t genID = this->path().getGenerationID();
+                    memcpy(key, &genID, sizeof(uint64_t));
+                    key += sizeof(uint64_t) / sizeof(uint32_t);
                 }
             }
             break;

@@ -142,7 +142,7 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
 
   if 'Tidy' in extra_tokens:
     # Swap in clang-tidy.sh for clang++, but update PATH so it can find clang++.
-    cxx = skia_dir.joinpath("tools/clang-tidy.sh")
+    args['cc_wrapper'] = '"%s"' % skia_dir.joinpath("tools/clang-tidy.sh")
     env['PATH'] = '%s:%%(PATH)s' % (clang_linux + '/bin')
     # Increase ClangTidy code coverage by enabling features.
     args.update({
@@ -177,6 +177,7 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
       'skia_use_runtime_icu': 'true',
       'skia_enable_optimize_size': 'true',
       'skia_use_jpeg_gainmaps': 'false',
+      'skia_use_partition_alloc': 'false',
     })
 
   if 'Exceptions' in extra_tokens:
@@ -226,13 +227,26 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
     args['skia_use_fontations'] = 'true'
     args['skia_use_freetype'] = 'true' # we compare with freetype in tests
     args['skia_use_system_freetype2'] = 'false'
-  if 'RustPNG' in extra_tokens:
+  if 'RustPNG' in extra_tokens or 'RustPNGAndroid' in extra_tokens:
     args['skia_use_rust_png_decode'] = 'true'
     args['skia_use_rust_png_encode'] = 'true'
     args['skia_use_libpng_decode'] = 'false'
     # TODO(b/356875275) set skia_use_libpng_encode to false also
+  if 'RustPNGAndroid' in extra_tokens:
+    args['skia_use_rust_png_for_android'] = 'true'
   if 'RustBMP' in extra_tokens:
     args['skia_use_rust_bmp_decode'] = 'true'
+  if 'RustALL' in extra_tokens:
+    args['skia_use_rust_bmp_decode'] = 'true'
+    args['skia_use_rust_exif'] = 'true'
+    args['skia_use_rust_icc'] = 'true'
+    args['skia_use_rust_ico_decode'] = 'true'
+    args['skia_use_rust_jpeg_decode'] = 'true'
+    args['skia_use_rust_jpeg_encode'] = 'true'
+    args['skia_use_rust_png_decode'] = 'true'
+    args['skia_use_rust_png_encode'] = 'true'
+    args['skia_use_libpng_decode'] = 'false'
+    # TODO(b/356875275) set skia_use_libpng_encode to false also
   if 'FreeType' in extra_tokens:
     args['skia_use_freetype'] = 'true'
     args['skia_use_system_freetype2'] = 'false'
@@ -257,6 +271,7 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
       'skia_use_libpng_encode':        'false',
       'skia_use_libwebp_decode':       'false',
       'skia_use_libwebp_encode':       'false',
+      'skia_use_partition_alloc':      'false',
       'skia_use_vulkan':               'false',
       'skia_use_wuffs':                'false',
       'skia_use_zlib':                 'false',
@@ -306,10 +321,6 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
       if api.vars.is_linux and t == 'ASAN':
         # skbug.com/40040003 and skbug.com/40040004
         extra_cflags.append('-DSK_ENABLE_SCOPED_LSAN_SUPPRESSIONS')
-  if 'SafeStack' in extra_tokens:
-    assert sanitize == ''
-    sanitize = 'safe-stack'
-
   if 'Wuffs' in extra_tokens:
     args['skia_use_wuffs'] = 'true'
 
@@ -322,7 +333,7 @@ def get_compile_flags(api, checkout_root, out_dir, workdir):
     'sanitize': sanitize,
     'target_cpu': target_arch,
     'target_os': 'ios' if any('iOS' in t for t in extra_tokens) else '',
-    'win_sdk': win_toolchain + '/win_sdk' if 'Win' in os else '',
+    'win_sdk': win_toolchain + '/Windows Kits/10' if 'Win' in os else '',
     'win_vc': win_toolchain + '/VC' if 'Win' in os else '',
     'skia_dwritecore_sdk': dwritecore if 'DWriteCore' in extra_tokens else '',
   }.items():
@@ -372,9 +383,10 @@ def compile_fn(api, checkout_root, out_dir):
 
   # Putting ninja on the path makes it easier for subcommands to find it
   # (e.g. when building Dawn via CMake+ninja)
-  # Importantly, this needs to go *after* depot_tools, so we append it
+  # Prepend ninja_root so subcommands use Skia's hermetic ninja binary
+  # rather than wrappers in depot_tools.
   existing_path = env.get('PATH', '%(PATH)s')
-  env['PATH'] = api.path.pathsep.join([existing_path, str(ninja_root)])
+  env['PATH'] = api.path.pathsep.join([str(ninja_root), existing_path])
 
   with api.context(cwd=skia_dir):
     with api.env(env):

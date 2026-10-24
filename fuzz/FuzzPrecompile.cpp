@@ -317,13 +317,14 @@ sk_sp<DrawContext> get_precompile_draw_context(
                                                     resourceProvider,
                                                     drawSize,
                                                     texInfo,
-                                                    "PrecompileTarget",
-                                                    skgpu::Budgeted::kYes);
+                                                    skgpu::Budgeted::kYes,
+                                                    "PrecompileTarget");
     sk_sp<DrawContext> precompileDrawContext = DrawContext::Make(caps,
                                                                  std::move(target),
                                                                  drawSize,
                                                                  colorInfo,
-                                                                 {});
+                                                                 {},
+                                                                 /*allowUnpremul=*/false);
     return precompileDrawContext;
 }
 
@@ -341,11 +342,10 @@ void fuzz_graphite(Fuzz* fuzz, Context* context, int depth = 9) {
     // Currently, we just use this as a valid parameter for keyContext (will hit asserts otherwise)
     sk_sp<DrawContext> drawContext = get_precompile_draw_context(caps, context);
 
-    FloatStorageManager floatStorageManager;
     PaintParamsKeyBuilder builder(dict);
     PipelineDataGatherer gatherer(layout);
     sk_sp<RuntimeEffectDictionary> rtDict = sk_make_sp<RuntimeEffectDictionary>();
-    KeyContext precompileKeyContext(caps, &floatStorageManager, &builder, &gatherer, dict, rtDict,
+    KeyContext precompileKeyContext(caps, &builder, &gatherer, dict, rtDict,
                                     ci);
 
     DrawTypeFlags kDrawType = DrawTypeFlags::kSimpleShape;
@@ -366,14 +366,12 @@ void fuzz_graphite(Fuzz* fuzz, Context* context, int depth = 9) {
                                 /* clipShader= */ nullptr,
                                 coverage,
                                 TextureFormat::kRGBA8);
-    SkDEBUGCODE(builder.checkReset());
-    SkDEBUGCODE(gatherer.checkReset());
     KeyContext keyContext(recorder.get(),
                           drawContext.get(),
-                          &floatStorageManager,
                           &builder,
                           &gatherer,
                           {},
+                          SkRect::MakeEmpty(),
                           ci,
                           KeyGenFlags::kDisableSamplingOptimization,
                           paintParams.color());

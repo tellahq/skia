@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Google Inc.
+ * Copyright 2024 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -17,18 +17,19 @@
 #include "include/core/SkString.h"
 #include "include/core/SkVertices.h"
 #include "include/effects/SkRuntimeEffect.h"
-#include "include/private/base/SkDebug.h"
-#include "src/base/SkRandom.h"
+#include "include/private/SkDebug.h"
+#include "src/core/SkRandom.h"
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/viewer/Slide.h"
 
+#include "delaunator.hpp"
+#include "imgui.h"
+
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <vector>
-
-#include "delaunator.hpp"
-#include "imgui.h"
 
 namespace {
 
@@ -522,16 +523,17 @@ public:
 private:
     void updateMesh(size_t new_count) {
         // These look better than rng when the count is low.
-        static constexpr struct {
+        struct GFixedVertices {
             SkPoint   fUv;
             SkColor4f fColor;
-        } gFixedVertices[] = {
-            {{ .25f, .25f}, {1, 0, 0, 1}},
-            {{ .75f, .75f}, {0, 1, 0, 1}},
-            {{ .75f, .25f}, {0, 0, 1, 1}},
-            {{ .25f, .75f}, {1, 1, 0, 1}},
-            {{ .50f, .50f}, {0, 1, 1, 1}},
         };
+        static constexpr auto gFixedVertices = std::to_array<GFixedVertices>({
+                GFixedVertices{{.25f, .25f}, {1, 0, 0, 1}},
+                GFixedVertices{{.75f, .75f}, {0, 1, 0, 1}},
+                GFixedVertices{{.75f, .25f}, {0, 0, 1, 1}},
+                GFixedVertices{{.25f, .75f}, {1, 1, 0, 1}},
+                GFixedVertices{{.50f, .50f}, {0, 1, 1, 1}},
+        });
 
         SkASSERT(fVertUVs.size() == fVertPos.size());
         SkASSERT(fVertUVs.size() == fVertColors.size());

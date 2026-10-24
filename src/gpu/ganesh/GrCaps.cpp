@@ -14,7 +14,7 @@
 #include "include/gpu/GpuTypes.h"
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #include "include/gpu/ganesh/GrContextOptions.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkDebug.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/core/SkCompressedDataUtils.h"
 #include "src/gpu/ganesh/GrBackendUtils.h"
@@ -22,6 +22,8 @@
 #include "src/gpu/ganesh/GrSurface.h"
 #include "src/gpu/ganesh/GrSurfaceProxy.h"
 #include "src/gpu/ganesh/GrWindowRectangles.h"
+
+#include <array>
 
 GrCaps::GrCaps(const GrContextOptions& options) {
     fNPOTTextureTileSupport = false;
@@ -43,6 +45,8 @@ GrCaps::GrCaps(const GrContextOptions& options) {
     fUsePrimitiveRestart = false;
     fPreferClientSideDynamicBuffers = false;
     fPreferFullscreenClears = false;
+    fDiscardStencilValuesAfterRenderPass = false;
+    fClearsAreFasterThanLoads = false;
     fTwoSidedStencilRefsAndMasksMustMatch = false;
     fMustClearUploadedBufferData = false;
     fShouldInitializeTextures = false;
@@ -227,7 +231,10 @@ void GrCaps::dumpJSON(SkJSONWriter* writer) const {
     writer->appendBool("MSAA Resolves Automatically", fMSAAResolvesAutomatically);
     writer->appendBool("Use primitive restart", fUsePrimitiveRestart);
     writer->appendBool("Prefer client-side dynamic buffers", fPreferClientSideDynamicBuffers);
-    writer->appendBool("Prefer fullscreen clears (and stencil discard)", fPreferFullscreenClears);
+    writer->appendBool("Prefer fullscreen clears", fPreferFullscreenClears);
+    writer->appendBool("Discard stencil values after renderpass",
+                       fDiscardStencilValuesAfterRenderPass);
+    writer->appendBool("Clears are faster than loads", fClearsAreFasterThanLoads);
     writer->appendBool("Two-sided Stencil Refs And Masks Must Match",
                        fTwoSidedStencilRefsAndMasksMustMatch);
     writer->appendBool("Must clear buffer memory", fMustClearUploadedBufferData);
@@ -277,11 +284,11 @@ void GrCaps::dumpJSON(SkJSONWriter* writer) const {
     writer->appendS32("Max Window Rectangles", fMaxWindowRectangles);
     writer->appendS32("Sample Count for Internal MSAA", fInternalMultisampleCount);
 
-    static const char* kBlendEquationSupportNames[] = {
+    static constexpr auto kBlendEquationSupportNames = std::to_array<const char*>({
         "Basic",
         "Advanced",
         "Advanced Coherent",
-    };
+    });
     static_assert(0 == kBasic_BlendEquationSupport);
     static_assert(1 == kAdvanced_BlendEquationSupport);
     static_assert(2 == kAdvancedCoherent_BlendEquationSupport);

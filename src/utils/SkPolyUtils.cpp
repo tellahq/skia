@@ -1,25 +1,26 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
+#include <array>
 #include "src/utils/SkPolyUtils.h"
 
 #include "include/core/SkRect.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTDArray.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkTDPQueue.h"
-#include "src/base/SkTInternalLList.h"
-#include "src/base/SkVx.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTDArray.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkPointPriv.h"
 #include "src/core/SkRectPriv.h"
+#include "src/core/SkTDPQueue.h"
+#include "src/core/SkTInternalLList.h"
+#include "src/core/SkVx.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -688,7 +689,7 @@ struct ActiveEdge {
     OffsetSegment fSegment;
     uint16_t fIndex0;   // indices for previous and next vertex in polygon
     uint16_t fIndex1;
-    ActiveEdge* fChild[2];
+    std::array<ActiveEdge *, 2> fChild;
     ActiveEdge* fAbove;
     ActiveEdge* fBelow;
     int32_t  fRed;

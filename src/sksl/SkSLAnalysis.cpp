@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google LLC.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -9,9 +9,9 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
+#include "include/private/SkEnumBitMask.h"
 #include "include/private/SkSLSampleUsage.h"
-#include "include/private/base/SkTArray.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkTArray.h"
 #include "src/core/SkTHash.h"
 #include "src/sksl/SkSLBuiltinTypes.h"
 #include "src/sksl/SkSLCompiler.h"
@@ -445,6 +445,29 @@ bool Analysis::ContainsVariable(const Expression& expr, const Variable& var) {
 
     ContainsVariableVisitor visitor{&var};
     return visitor.visitExpression(expr);
+}
+
+const Variable* Analysis::GetRootVariable(const Expression& expr) {
+    const Expression* e = &expr;
+    while (e) {
+        if (e->is<VariableReference>()) {
+            return e->as<VariableReference>().variable();
+        }
+        if (e->is<IndexExpression>()) {
+            e = e->as<IndexExpression>().base().get();
+            continue;
+        }
+        if (e->is<FieldAccess>()) {
+            e = e->as<FieldAccess>().base().get();
+            continue;
+        }
+        if (e->is<Swizzle>()) {
+            e = e->as<Swizzle>().base().get();
+            continue;
+        }
+        break;
+    }
+    return nullptr;
 }
 
 bool Analysis::IsCompileTimeConstant(const Expression& expr) {

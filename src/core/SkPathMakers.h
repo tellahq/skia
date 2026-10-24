@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,6 +11,8 @@
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkRRect.h"
+
+#include <array>
 
 template <unsigned N> class SkPath_PointIterator {
 public:
@@ -29,7 +31,7 @@ public:
     }
 
     protected:
-    SkPoint fPts[N];
+    std::array<SkPoint, N> fPts;
 
     private:
     unsigned fCurrent;

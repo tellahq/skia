@@ -6,8 +6,8 @@
  */
 #include "src/pathops/SkOpSegment.h"
 
-#include "include/private/base/SkTDArray.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTDArray.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkPointPriv.h"
 #include "src/pathops/SkIntersections.h"
 #include "src/pathops/SkOpCoincidence.h"
@@ -16,6 +16,7 @@
 #include "src/pathops/SkPathWriter.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 
 /*
@@ -31,11 +32,11 @@ intersection tests cannot.
 #define F (false)      // discard the edge
 #define T (true)       // keep the edge
 
-static constexpr bool kUnaryActiveEdge[2][2] = {
+static constexpr std::array<std::array<bool, 2>, 2> kUnaryActiveEdge = {{
 //  from=0  from=1
 //  to=0,1  to=0,1
     {F, T}, {T, F},
-};
+}};
 
 static constexpr bool kActiveEdge[kXOR_SkPathOp + 1][2][2][2][2] = {
 //                 miFrom=0                              miFrom=1

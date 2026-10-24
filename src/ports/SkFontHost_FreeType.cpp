@@ -19,12 +19,12 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/ports/SkFontScanner_FreeType.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkMutex.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkTSearch.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkMutex.h"
+#include "include/private/SkTFitsIn.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkAdvancedTypefaceMetrics.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkDescriptor.h"
@@ -34,6 +34,7 @@
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskGamma.h"
 #include "src/core/SkScalerContext.h"
+#include "src/core/SkTSearch.h"
 #include "src/ports/SkFontHost_FreeType_common.h"
 #include "src/ports/SkFontScanner_FreeType_priv.h"
 #include "src/ports/SkTypeface_FreeType.h"
@@ -43,6 +44,7 @@
 #include "src/utils/SkCallableTraits.h"
 #include "src/utils/SkMatrix22.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -170,7 +172,7 @@ FT_MemoryRec_ gFTMemory = { nullptr, sk_ft_alloc, sk_ft_free, sk_ft_realloc };
 
 class FreeTypeLibrary : SkNoncopyable {
 public:
-    FreeTypeLibrary() : fLibrary(nullptr) {
+    FreeTypeLibrary() : fLibrary(nullptr), fCOLRv1ABIMatches(false) {
         if (FT_New_Library(&gFTMemory, &fLibrary)) {
             return;
         }
@@ -181,6 +183,15 @@ public:
         // Newer versions may still need this, so this test with side effects must come first.
         // The default has changed over time, so this doesn't mean the same thing to all users.
         FT_Library_SetLcdFilter(fLibrary, FT_LCD_FILTER_DEFAULT);
+
+        // FreeType 2.13.0 changed the experimental COLRv1 struct layout without a soname bump,
+        // so COLRv1 is only safe when the loaded library matches the layout of these headers.
+        constexpr bool kHeadersHaveCOLRv1ABI213 =
+                (FREETYPE_MAJOR) > 2 || ((FREETYPE_MAJOR) == 2 && (FREETYPE_MINOR) >= 13);
+        FT_Int major, minor, patch;
+        FT_Library_Version(fLibrary, &major, &minor, &patch);
+        const bool libraryHasCOLRv1ABI213 = major > 2 || (major == 2 && minor >= 13);
+        fCOLRv1ABIMatches = kHeadersHaveCOLRv1ABI213 == libraryHasCOLRv1ABI213;
     }
     ~FreeTypeLibrary() {
         if (fLibrary) {
@@ -189,9 +200,11 @@ public:
     }
 
     FT_Library library() { return fLibrary; }
+    bool colrv1ABIMatches() const { return fCOLRv1ABIMatches; }
 
 private:
     FT_Library fLibrary;
+    bool fCOLRv1ABIMatches;
 
     // FT_Library_SetLcdFilterWeights 2.4.0
     // FT_LOAD_COLOR 2.5.0
@@ -578,7 +591,7 @@ std::unique_ptr<SkAdvancedTypefaceMetrics> SkTypeface_FreeType::onGetAdvancedMet
         return nullptr;
     }
 
-    std::unique_ptr<SkAdvancedTypefaceMetrics> info(new SkAdvancedTypefaceMetrics);
+    auto info = std::make_unique<SkAdvancedTypefaceMetrics>();
     info->fPostScriptName.set(FT_Get_Postscript_Name(face));
 
     if (FT_HAS_MULTIPLE_MASTERS(face)) {
@@ -726,11 +739,11 @@ std::unique_ptr<SkScalerContext> SkTypeface_FreeType::onCreateScalerContextAsPro
         const SkScalerContextEffects& effects,
         const SkDescriptor* desc,
         SkTypeface* proxyTypeface) const {
-    std::unique_ptr<SkScalerContext_FreeType> scalerContext(new SkScalerContext_FreeType(
+    auto scalerContext = std::make_unique<SkScalerContext_FreeType>(
             *this,
             effects,
             desc,
-            proxyTypeface ? *proxyTypeface : *const_cast<SkTypeface_FreeType*>(this)));
+            proxyTypeface ? *proxyTypeface : *const_cast<SkTypeface_FreeType*>(this));
     if (scalerContext->success()) {
         return scalerContext;
     }
@@ -1137,7 +1150,7 @@ FT_Error SkScalerContext_FreeType::setupSize() {
 
 bool SkScalerContext_FreeType::getBoundsOfCurrentOutlineGlyph(FT_GlyphSlot glyph, SkRect* bounds) {
     if (glyph->format != FT_GLYPH_FORMAT_OUTLINE) {
-        SkASSERT(false);
+        SkDEBUGFAIL("unexpected format type");
         return false;
     }
     if (0 == glyph->outline.n_contours) {
@@ -1146,6 +1159,16 @@ bool SkScalerContext_FreeType::getBoundsOfCurrentOutlineGlyph(FT_GlyphSlot glyph
 
     FT_BBox bbox;
     FT_Outline_Get_CBox(&glyph->outline, &bbox);
+    // The FreeType docs say these will be 32 bits at most.
+    if (!SkTFitsIn<SkFDot6>(bbox.xMin) || !SkTFitsIn<SkFDot6>(bbox.xMax) ||
+        !SkTFitsIn<SkFDot6>(bbox.yMin) || !SkTFitsIn<SkFDot6>(bbox.yMax)) {
+        return false;
+    }
+
+    if (bbox.xMin >= bbox.xMax || bbox.yMin >= bbox.yMax) {
+        return false;
+    }
+
     *bounds = SkRect::MakeLTRB(SkFDot6ToScalar(bbox.xMin), -SkFDot6ToScalar(bbox.yMax),
                                SkFDot6ToScalar(bbox.xMax), -SkFDot6ToScalar(bbox.yMin));
     return true;
@@ -1221,7 +1244,8 @@ SkScalerContext::GlyphMetrics SkScalerContext_FreeType::generateMetrics(const Sk
         SkRect bounds = SkRect::MakeEmpty();
 #ifdef TT_SUPPORT_COLRV1
         FT_OpaquePaint opaqueLayerPaint{nullptr, 1};
-        if (FT_Get_Color_Glyph_Paint(fFace, glyph.getGlyphID(),
+        if (gFTLibrary->colrv1ABIMatches() &&
+            FT_Get_Color_Glyph_Paint(fFace, glyph.getGlyphID(),
                                      FT_COLOR_INCLUDE_ROOT_TRANSFORM, &opaqueLayerPaint)) {
             haveLayers = true;
             mx.extraBits = ScalerContextBits::COLRv1;
@@ -2247,37 +2271,43 @@ bool SkFontScanner_FreeType::scanInstance(SkStreamAsset* stream,
     }
 
     if (!hasOs2 && !hasAxes && 0 == FT_Get_PS_Font_Info(face.get(), &psFontInfo) && psFontInfo.weight) {
-        static const struct {
+        struct CommonWeights {
+            // Must remain the first member: the lookup below indexes with a
+            // sizeof(CommonWeights) stride starting at &commonWeights[0].name.
             char const * const name;
             int const weight;
-        } commonWeights [] = {
-                // There are probably more common names, but these are known to exist.
-                { "all", SkFontStyle::kNormal_Weight }, // Multiple Masters usually default to normal.
-                { "black", SkFontStyle::kBlack_Weight },
-                { "bold", SkFontStyle::kBold_Weight },
-                { "book", (SkFontStyle::kNormal_Weight + SkFontStyle::kLight_Weight)/2 },
-                { "demi", SkFontStyle::kSemiBold_Weight },
-                { "demibold", SkFontStyle::kSemiBold_Weight },
-                { "extra", SkFontStyle::kExtraBold_Weight },
-                { "extrabold", SkFontStyle::kExtraBold_Weight },
-                { "extralight", SkFontStyle::kExtraLight_Weight },
-                { "hairline", SkFontStyle::kThin_Weight },
-                { "heavy", SkFontStyle::kBlack_Weight },
-                { "light", SkFontStyle::kLight_Weight },
-                { "medium", SkFontStyle::kMedium_Weight },
-                { "normal", SkFontStyle::kNormal_Weight },
-                { "plain", SkFontStyle::kNormal_Weight },
-                { "regular", SkFontStyle::kNormal_Weight },
-                { "roman", SkFontStyle::kNormal_Weight },
-                { "semibold", SkFontStyle::kSemiBold_Weight },
-                { "standard", SkFontStyle::kNormal_Weight },
-                { "thin", SkFontStyle::kThin_Weight },
-                { "ultra", SkFontStyle::kExtraBold_Weight },
-                { "ultrablack", SkFontStyle::kExtraBlack_Weight },
-                { "ultrabold", SkFontStyle::kExtraBold_Weight },
-                { "ultraheavy", SkFontStyle::kExtraBlack_Weight },
-                { "ultralight", SkFontStyle::kExtraLight_Weight },
         };
+        // SkStrLCSearch binary searches this table, so the names must be lower-case and sorted.
+        // There are probably more common names, but these are known to exist.
+        using FS = SkFontStyle;
+        static constexpr auto commonWeights = std::to_array<CommonWeights>({
+                // Multiple Masters usually default to normal.
+                CommonWeights{"all",        FS::kNormal_Weight},
+                CommonWeights{"black",      FS::kBlack_Weight},
+                CommonWeights{"bold",       FS::kBold_Weight},
+                CommonWeights{"book",       (FS::kNormal_Weight + FS::kLight_Weight) / 2},
+                CommonWeights{"demi",       FS::kSemiBold_Weight},
+                CommonWeights{"demibold",   FS::kSemiBold_Weight},
+                CommonWeights{"extra",      FS::kExtraBold_Weight},
+                CommonWeights{"extrabold",  FS::kExtraBold_Weight},
+                CommonWeights{"extralight", FS::kExtraLight_Weight},
+                CommonWeights{"hairline",   FS::kThin_Weight},
+                CommonWeights{"heavy",      FS::kBlack_Weight},
+                CommonWeights{"light",      FS::kLight_Weight},
+                CommonWeights{"medium",     FS::kMedium_Weight},
+                CommonWeights{"normal",     FS::kNormal_Weight},
+                CommonWeights{"plain",      FS::kNormal_Weight},
+                CommonWeights{"regular",    FS::kNormal_Weight},
+                CommonWeights{"roman",      FS::kNormal_Weight},
+                CommonWeights{"semibold",   FS::kSemiBold_Weight},
+                CommonWeights{"standard",   FS::kNormal_Weight},
+                CommonWeights{"thin",       FS::kThin_Weight},
+                CommonWeights{"ultra",      FS::kExtraBold_Weight},
+                CommonWeights{"ultrablack", FS::kExtraBlack_Weight},
+                CommonWeights{"ultrabold",  FS::kExtraBold_Weight},
+                CommonWeights{"ultraheavy", FS::kExtraBlack_Weight},
+                CommonWeights{"ultralight", FS::kExtraLight_Weight},
+        });
         int const index = SkStrLCSearch(&commonWeights[0].name, std::size(commonWeights),
                                         psFontInfo.weight, sizeof(commonWeights[0]));
         if (index >= 0) {

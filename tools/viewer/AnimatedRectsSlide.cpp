@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Google Inc.
+ * Copyright 2023 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,9 +11,11 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 // This slide draws a lot of overlapping rectangles which slide left.
 // It's adapted from the performance test at https://benchmarks.slaylines.io/
@@ -79,7 +81,7 @@ private:
         float x, y, size, speed;
     };
 
-    AnimatedRect fRect[kNumRects];
+    std::array<AnimatedRect, kNumRects> fRect;
     SkRandom fRand;
     SkPaint fStrokePaint, fFillPaint;
     float fLastTime = 0.0f;

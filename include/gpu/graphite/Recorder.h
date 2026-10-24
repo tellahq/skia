@@ -8,16 +8,16 @@
 #ifndef skgpu_graphite_Recorder_DEFINED
 #define skgpu_graphite_Recorder_DEFINED
 
-#include "include/core/SkCPURecorder.h"
 #include "include/core/SkRecorder.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSurface.h"
+#include "include/cpu/Recorder.h"
 #include "include/gpu/graphite/GraphiteTypes.h"
 #include "include/gpu/graphite/Recording.h"
-#include "include/private/base/SingleOwner.h"
-#include "include/private/base/SkAPI.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTDArray.h"
+#include "include/private/SingleOwner.h"
+#include "include/private/SkAPI.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTDArray.h"
 
 #include <chrono>
 #include <cstddef>
@@ -53,7 +53,6 @@ class BackendTexture;
 class Context;
 class Device;
 class DrawBufferManager;
-class FloatStorageManager;
 class ImageProvider;
 class PaintParamsKeyBuilder;
 class PipelineDataGatherer;
@@ -210,9 +209,12 @@ public:
     /**
      * Purge GPU resources on the Recorder that haven't been used in the past 'msNotUsed'
      * milliseconds or are otherwise marked for deletion, regardless of whether the context is under
-     * budget.
+     * budget. Optionally provide a `microsMaxPurgingDur` after which Skia should stop purging
+     * resources.
      */
-    void performDeferredCleanup(std::chrono::milliseconds msNotUsed);
+    void performDeferredCleanup(
+            std::chrono::milliseconds msNotUsed,
+            std::optional<std::chrono::microseconds> microsMaxPurgingDur = std::nullopt);
 
     /**
      * Returns the number of bytes of the Recorder's gpu memory cache budget that are currently in
@@ -282,6 +284,7 @@ private:
 
     SkCanvas* makeCaptureCanvas(SkCanvas*) override;
     void createCaptureBreakpoint(SkSurface*) override;
+    void deregisterCaptureCanvas(SkCanvas*) override;
 
     sk_sp<SharedContext> fSharedContext;
     ResourceProvider* fResourceProvider; // May point to the Context's resource provider
@@ -294,9 +297,9 @@ private:
     // Aggregated one-time uploads that precede all tasks in the root task list.
     std::unique_ptr<UploadList> fRootUploads;
 
-    std::unique_ptr<DrawBufferManager> fDrawBufferManager;
     std::unique_ptr<UploadBufferManager> fUploadBufferManager;
-    sk_sp<FloatStorageManager> fFloatStorageManager;
+    // Depends on fUploadBufferManager (holds a pointer to it). Must be destroyed first.
+    std::unique_ptr<DrawBufferManager> fDrawBufferManager;
     std::unique_ptr<ProxyReadCountMap> fProxyReadCounts;
 
     skia_private::STArray<kMaxKeyAndDataBuilders, std::unique_ptr<KeyAndDataBuilder>>

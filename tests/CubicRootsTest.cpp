@@ -7,13 +7,14 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "src/base/SkCubics.h"
-#include "src/base/SkUtils.h"
+#include "include/private/SkFloatingPoint.h"
+#include "src/core/SkCubics.h"
+#include "src/core/SkUtils.h"
 #include "src/pathops/SkPathOpsCubic.h"
 #include "tests/Test.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <iterator>
@@ -335,8 +336,8 @@ static void testCubicValidT(skiatest::Reporter* reporter, std::string name,
     }
     {
         skiatest::ReporterContext subsubtest(reporter, "SkCubics Analytic Implementation");
-        double roots[3] = {0, 0, 0};
-        int rootCount = SkCubics::RootsValidT(A, B, C, D, roots);
+        std::array<double, 3> roots = {0, 0, 0};
+        int rootCount = SkCubics::RootsValidT(A, B, C, D, roots.data());
         REPORTER_ASSERT(reporter, expectedRoots.size() == size_t(rootCount),
                         "Wrong number of roots returned %zu != %d",
                         expectedRoots.size(), rootCount);
@@ -357,8 +358,8 @@ static void testCubicValidT(skiatest::Reporter* reporter, std::string name,
     }
     {
         skiatest::ReporterContext subsubtest(reporter, "SkCubics Binary Search Implementation");
-        double roots[3] = {0, 0, 0};
-        int rootCount = SkCubics::BinarySearchRootsValidT(A, B, C, D, roots);
+        std::array<double, 3> roots = {0, 0, 0};
+        int rootCount = SkCubics::BinarySearchRootsValidT(A, B, C, D, roots.data());
         REPORTER_ASSERT(reporter, expectedRoots.size() == size_t(rootCount),
                         "Wrong number of roots returned %zu != %d", expectedRoots.size(),
                         rootCount);

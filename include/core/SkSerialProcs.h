@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -8,8 +8,9 @@
 #ifndef SkSerialProcs_DEFINED
 #define SkSerialProcs_DEFINED
 
+#include "include/core/SkFourByteTag.h"
 #include "include/core/SkRefCnt.h"
-#include "include/private/base/SkAPI.h"
+#include "include/private/SkAPI.h"
 
 #include <cstddef>
 #include <optional>
@@ -46,8 +47,7 @@ using SkSerialTypefaceProc = SkSerialReturnType (*)(SkTypeface*, void* ctx);
 using SkDeserialPictureProc = sk_sp<SkPicture> (*)(const void* data, size_t length, void* ctx);
 
 /**
- *  Called with the encoded form of an image. The proc can return an image object, or if it
- *  returns nullptr, then Skia will take its default action to try to create an image from the data.
+ *  Called with the encoded form of an image. If this is not set, no image decoding will be done.
  *
  *  This will also be used to decode the internal mipmap layers that are saved on some images.
  *
@@ -59,14 +59,11 @@ using SkDeserialPictureProc = sk_sp<SkPicture> (*)(const void* data, size_t leng
  *  must make a copy of any data they needed after the proc finishes, since the data will go away
  *  after serialization ends.
  */
-#if !defined(SK_LEGACY_DESERIAL_IMAGE_PROC)
-using SkDeserialImageProc = sk_sp<SkImage> (*)(const void* data, size_t length, void* ctx);
-#else
 using SkDeserialImageProc = sk_sp<SkImage> (*)(const void* data,
                                                size_t length,
                                                std::optional<SkAlphaType>,
                                                void* ctx);
-#endif
+
 using SkDeserialImageFromDataProc = sk_sp<SkImage> (*)(sk_sp<SkData>,
                                                        std::optional<SkAlphaType>,
                                                        void* ctx);
@@ -85,6 +82,8 @@ using SkSlugProc = sk_sp<sktext::gpu::Slug> (*)(SkReadBuffer&, void* ctx);
  */
 using SkDeserialTypefaceStreamProc = sk_sp<SkTypeface> (*)(SkStream&, void* ctx);
 using SkDeserialTypefaceProc = sk_sp<SkTypeface> (*)(const void* data, size_t length, void* ctx);
+
+using SkDeserialAllowTagsProc = bool(*)(SkFourByteTag, void* ctx);
 
 struct SK_API SkSerialProcs {
     SkSerialPictureProc fPictureProc = nullptr;
@@ -115,6 +114,10 @@ struct SK_API SkDeserialProcs {
     // parameters and returns a bool). Given that there are only two valid implementations of that
     // proc, we just insert the bool directly.
     bool                         fAllowSkSL = true;
+
+    // Can be used to restrict the tags that will be deserialized from SkPictures.
+    SkDeserialAllowTagsProc      fAllowTagsProc = nullptr;
+    void*                        fAllowTagsCtx = nullptr;
 };
 
 #endif

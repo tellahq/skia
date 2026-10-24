@@ -13,7 +13,9 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
 #include "include/effects/SkGradient.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTemplates.h"
+
+#include <array>
 
 using namespace skia_private;
 
@@ -45,11 +47,11 @@ public:
         };
 
         constexpr int kNumColorChoices = 4;
-        SkColor4f color_choices[kNumColorChoices] = {
-            SkColors::kRed,
-            SkColors::kGreen,
-            SkColors::kBlue,
-            SkColors::kYellow,
+        static constexpr std::array<SkColor4f, kNumColorChoices> color_choices = {
+                SkColors::kRed,
+                SkColors::kGreen,
+                SkColors::kBlue,
+                SkColors::kYellow,
         };
 
         const size_t N = fColorCount;

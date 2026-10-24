@@ -8,7 +8,7 @@
 #ifndef skgpu_graphite_render_SDFTextRenderStep_DEFINED
 #define skgpu_graphite_render_SDFTextRenderStep_DEFINED
 
-#include "src/base/SkVx.h"
+#include "src/core/SkVx.h"
 #include "src/gpu/graphite/Renderer.h"
 
 #include <string>
@@ -26,12 +26,15 @@ public:
 
     ~SDFTextRenderStep() override;
 
-    std::string vertexSkSL() const override;
+    std::string vertexSkSL(const RootNodesInfo&) const override;
     std::string texturesAndSamplersSkSL(const ResourceBindingRequirements&,
                                         int* nextBindingIndex) const override;
     const char* fragmentCoverageSkSL() const override;
 
-    void writeVertices(DrawWriter*, const DrawParams&, uint32_t ssboIndex) const override;
+    void writeVertices(DrawWriter*,
+                       StorageContext*,
+                       const DrawParams&,
+                       uint32_t ssboIndex) const override;
     void writeUniformsAndTextures(const DrawParams&, PipelineDataGatherer*) const override;
 };
 

@@ -9,16 +9,17 @@
 
 #include "include/gpu/graphite/GraphiteTypes.h"
 
-#include "include/private/base/SkDebug.h"
-#include "src/base/SkBlockAllocator.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkTBlockList.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
+#include "src/core/SkBlockAllocator.h"
+#include "src/core/SkTBlockList.h"
 #include "src/gpu/graphite/ContextUtils.h"
 #include "src/gpu/graphite/DrawCommands.h"
 #include "src/gpu/graphite/DrawOrder.h"
 #include "src/gpu/graphite/DrawParams.h"
 #include "src/gpu/graphite/PaintParams.h"
 #include "src/gpu/graphite/PipelineData.h"
+#include "src/gpu/graphite/StorageContext.h"
 #include "src/gpu/graphite/geom/Rect.h"
 #include "src/gpu/graphite/geom/Transform.h"
 
@@ -31,6 +32,7 @@
 namespace skgpu::graphite {
 
 class DrawPass;
+class DrawContext;
 class Geometry;
 class Renderer;
 class Recorder;
@@ -61,10 +63,14 @@ public:
             SkEnumBitMask<DstUsage> dstUsage,
             BarrierType barrierBeforeDraws,
             PipelineDataGatherer* gatherer,
+            StorageContext* storageContext,
             const StrokeStyle* stroke,
-            const Layer* latestDepthLayer) = 0;
+            Layer* latestInsertion) = 0;
+
 
     virtual std::unique_ptr<DrawPass> snapDrawPass(Recorder* recorder,
+                                                   StorageContext* storageContext,
+                                                   DrawContext* drawContext,
                                                    sk_sp<TextureProxy> target,
                                                    const SkImageInfo& targetInfo,
                                                    const DstReadStrategy dstReadStrategy) = 0;
@@ -116,8 +122,8 @@ protected:
     // the DrawListLayer's arena allocator.
     SkTBlockList<Transform, 4> fTransforms{SkBlockAllocator::GrowthPolicy::kFibonacci};
 
-    UniformDataCache fUniformDataCache;
-    TextureDataCache fTextureDataCache;
+    UniformDataCache      fUniformDataCache;
+    TextureDataCache      fTextureDataCache;
     GraphicsPipelineCache fPipelineCache;
 
     int fRenderStepCount = 0;
@@ -154,6 +160,8 @@ protected:
 
             UniformDataCache::Entry& uniformData = uniformCache.lookup(index);
             const size_t uniformDataSize = uniformData.fCpuData.size();
+            size_t uniformBindingSize =
+                    fUseStorageBuffers ? uniformDataSize : SkNextSizePow2(uniformDataSize);
 
             // Upload the uniform data if we haven't already.
             // Alternatively, re-upload the uniform data to avoid a rebind if we're using storage
@@ -163,13 +171,15 @@ protected:
                  uniformData.fBufferBinding.fBuffer != fLastBinding.fBuffer)) {
                 BufferWriter writer;
                 std::tie(writer, uniformData.fBufferBinding) =
-                        fCurrentBuffer.getMappedSubrange(1, uniformDataSize);
+                        fCurrentBuffer.getMappedSubrangeWithHeadroom(uniformDataSize,
+                                                                     uniformBindingSize);
                 if (!writer) {
                     // Allocate a new buffer
                     std::tie(writer, uniformData.fBufferBinding, fCurrentBuffer) =
                             fUseStorageBuffers
                                     ? bufferMgr->getMappedStorageBuffer(1, uniformDataSize)
-                                    : bufferMgr->getMappedUniformBuffer(1, uniformDataSize);
+                                    : bufferMgr->getMappedUniformBuffer(uniformDataSize,
+                                                                        uniformBindingSize);
                     if (!writer) {
                         return {};  // Allocation failed so early out
                     }
@@ -186,6 +196,7 @@ protected:
                 } else {
                     // Every new set of uniform data has to be bound, this ensures its aligned
                     // correctly
+                    uniformData.fBufferBinding.fSize = SkTo<uint32_t>(uniformBindingSize);
                     fCurrentBuffer.resetForNewBinding();
                 }
             }

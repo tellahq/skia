@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -9,7 +9,7 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkAssert.h"
+#include "include/private/SkAssert.h"
 #include "modules/jsonreader/SkJSONReader.h"
 #include "modules/skottie/src/Adapter.h"
 #include "modules/skottie/src/SkottieJson.h"
@@ -22,6 +22,7 @@
 #include "modules/sksg/include/SkSGPaint.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <utility>
 #include <vector>
@@ -55,20 +56,20 @@ public:
             this->node()->setStyle(SkPaint::kStroke_Style);
             this->node()->setStrokeMiter(ParseDefault<SkScalar>(jpaint["ml"], 4.0f));
 
-            static constexpr SkPaint::Join gJoins[] = {
-                SkPaint::kMiter_Join,
-                SkPaint::kRound_Join,
-                SkPaint::kBevel_Join,
-            };
+            static constexpr auto gJoins = std::to_array<SkPaint::Join>({
+                    SkPaint::kMiter_Join,
+                    SkPaint::kRound_Join,
+                    SkPaint::kBevel_Join,
+            });
             this->node()->setStrokeJoin(
                         gJoins[std::min<size_t>(ParseDefault<size_t>(jpaint["lj"], 1) - 1,
                                               std::size(gJoins) - 1)]);
 
-            static constexpr SkPaint::Cap gCaps[] = {
-                SkPaint::kButt_Cap,
-                SkPaint::kRound_Cap,
-                SkPaint::kSquare_Cap,
-            };
+            static constexpr auto gCaps = std::to_array<SkPaint::Cap>({
+                    SkPaint::kButt_Cap,
+                    SkPaint::kRound_Cap,
+                    SkPaint::kSquare_Cap,
+            });
             this->node()->setStrokeCap(
                         gCaps[std::min<size_t>(ParseDefault<size_t>(jpaint["lc"], 1) - 1,
                                              std::size(gCaps) - 1)]);

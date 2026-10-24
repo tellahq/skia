@@ -18,8 +18,6 @@
 class SkPixmap;
 struct SkImageInfo;
 
-namespace skcpu { class ContextImpl; }
-
 namespace skgpu::graphite {
 
 class Caps;
@@ -28,7 +26,7 @@ class Recorder;
 class RendererProvider;
 class ResourceProvider;
 class ShaderCodeDictionary;
-class TextureProxy;
+class TextureProxyView;
 enum class PathRendererStrategy;
 struct ContextOptions;
 
@@ -62,7 +60,6 @@ public:
     SharedContext* sharedContext() {
         return fContext->fSharedContext.get();
     }
-    const skcpu::ContextImpl* cpuContext() const { return fContext->fCPUContext.get(); }
 
 #if defined(GPU_TEST_UTILS)
     void startCapture() {
@@ -77,7 +74,7 @@ public:
     }
 
     bool readPixels(const SkPixmap&,
-                    const TextureProxy*,
+                    const TextureProxyView&,
                     const SkImageInfo& srcImageInfo,
                     int srcX, int srcY);
 #endif

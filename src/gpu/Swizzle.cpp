@@ -28,15 +28,23 @@ void Swizzle::apply(SkRasterPipeline* pipeline) const {
         case Swizzle("rgb1").asKey():
             pipeline->append(SkRasterPipelineOp::force_opaque);
             return;
+        case Swizzle("bgr1").asKey():
+            pipeline->append(SkRasterPipelineOp::swap_rb);
+            pipeline->append(SkRasterPipelineOp::force_opaque);
+            return;
         case Swizzle("a001").asKey():
             pipeline->append(SkRasterPipelineOp::alpha_to_red);
             return;
         default: {
             static_assert(sizeof(uintptr_t) >= 4 * sizeof(char));
             // Rather than allocate the 4 control bytes on the heap somewhere, just jam them right
-            // into a uintptr_t context.
-            uintptr_t ctx = {};
-            memcpy(&ctx, this->asString().c_str(), 4 * sizeof(char));
+            // into a uintptr_t context. This is mapping from packed 16 bits (4 bits/channel holding
+            // index values in [0,5]) to 32 bits (8 bits/channel holding characters).
+            uint32_t charBits = (IToC((fKey >> 0)  & 0xfU) << 0)  |
+                                (IToC((fKey >> 4)  & 0xfU) << 8)  |
+                                (IToC((fKey >> 8)  & 0xfU) << 16) |
+                                (IToC((fKey >> 12) & 0xfU) << 24);
+            uintptr_t ctx = static_cast<uintptr_t>(charBits);
             pipeline->append(SkRasterPipelineOp::swizzle, ctx);
             return;
         }

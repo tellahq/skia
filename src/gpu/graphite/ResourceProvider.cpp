@@ -10,6 +10,8 @@
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTileMode.h"
 #include "include/gpu/graphite/BackendTexture.h"
+#include "include/private/SkLog.h"
+#include "src/gpu/GlobalResourceStats.h"
 #include "src/gpu/graphite/Buffer.h"
 #include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/CommandBuffer.h"
@@ -17,18 +19,13 @@
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/ContextUtils.h"
 #include "src/gpu/graphite/GlobalCache.h"
-#include "src/gpu/graphite/GraphicsPipeline.h"
-#include "src/gpu/graphite/GraphicsPipelineHandle.h"
-#include "src/gpu/graphite/Log.h"
-#include "src/gpu/graphite/PipelineCreationTask.h"
-#include "src/gpu/graphite/PipelineManager.h"
 #include "src/gpu/graphite/RenderPassDesc.h"
 #include "src/gpu/graphite/RendererProvider.h"
 #include "src/gpu/graphite/ResourceCache.h"
-#include "src/gpu/graphite/RuntimeEffectDictionary.h"
 #include "src/gpu/graphite/Sampler.h"
 #include "src/gpu/graphite/SharedContext.h"
 #include "src/gpu/graphite/Texture.h"
+#include "src/gpu/graphite/TextureUtils.h"
 #include "src/sksl/SkSLCompiler.h"
 
 namespace skgpu::graphite {
@@ -42,34 +39,6 @@ ResourceProvider::ResourceProvider(SharedContext* sharedContext,
 
 ResourceProvider::~ResourceProvider() {
     fResourceCache->shutdown();
-}
-
-GraphicsPipelineHandle ResourceProvider::createGraphicsPipelineHandle(
-        const GraphicsPipelineDesc& pipelineDesc,
-        const RenderPassDesc& renderPassDesc,
-        SkEnumBitMask<PipelineCreationFlags> pipelineCreationFlags) {
-
-    PipelineManager* pipelineManager = fSharedContext->pipelineManager();
-
-    return pipelineManager->createHandle(fSharedContext,
-                                         pipelineDesc,
-                                         renderPassDesc,
-                                         pipelineCreationFlags);
-}
-
-void ResourceProvider::startPipelineCreationTask(sk_sp<const RuntimeEffectDictionary> runtimeDict,
-                                                 const GraphicsPipelineHandle& handle) {
-    PipelineManager* pipelineManager = fSharedContext->pipelineManager();
-
-    pipelineManager->startPipelineCreationTask(fSharedContext,
-                                               std::move(runtimeDict),
-                                               handle);
-}
-
-sk_sp<GraphicsPipeline> ResourceProvider::resolveHandle(const GraphicsPipelineHandle& handle) {
-    PipelineManager* pipelineManager = fSharedContext->pipelineManager();
-
-    return pipelineManager->resolveHandle(handle);
 }
 
 sk_sp<ComputePipeline> ResourceProvider::findOrCreateComputePipeline(
@@ -110,32 +79,6 @@ sk_sp<Texture> ResourceProvider::findOrCreateScratchTexture(
             dimensions, info, label, Budgeted::kYes, Shareable::kScratch, &unavailable);
 }
 
-namespace {
-// TODO(b/387505250): Remove this helper once threadsafe label management is enforced by other
-// callers as outlined in the threadsafe resource label model outlined in Resource.h. To maintain
-// functionality until then, funnel all manual label update calls the ResourceProvider uses through
-// this helper for easier removal later on.
-void update_and_sync_resource_label(Resource* resource, std::string_view label) {
-    if (!resource) {
-        return;
-    }
-
-    if (resource->shareable() == Shareable::kYes) {
-        // Shareable resource labels should only be set upon creation
-        SkASSERT(resource->getLabel() == label);
-    } else {
-        resource->setLabel(label);
-        // TODO(b/476118698): Only non-shareable resources should be permitted to update their
-        // backend labels when returned from the cache. As it's currently implemented, scratch
-        // resource labels will be synchronized here as well. While this is safe to do while we
-        // do not use one global threadsafe resource cache, scratch resource label management
-        // will need to be implemented per the model outlined in Resource.h before we can
-        // use one threadsafe global cache.
-        resource->synchronizeBackendLabel();
-    }
-}
-} // anonymous
-
 sk_sp<Texture> ResourceProvider::findOrCreateTexture(
         SkISize dimensions,
         const TextureInfo& info,
@@ -160,8 +103,7 @@ sk_sp<Texture> ResourceProvider::findOrCreateTexture(
     fSharedContext->caps()->buildKeyForTexture(dimensions, info, kType, &key);
 
     if (Resource* resource =
-                fResourceCache->findAndRefResource(key, budgeted, shareable, unavailable)) {
-        update_and_sync_resource_label(resource, label);
+                fResourceCache->findAndRefResource(key, budgeted, shareable, label, unavailable)) {
         return sk_sp<Texture>(static_cast<Texture*>(resource));
     }
 
@@ -192,7 +134,7 @@ sk_sp<Sampler> ResourceProvider::findOrCreateCompatibleSampler(const SamplerDesc
         // immutable sampler details into the SamplerDesc, so there is no need to delegate to Caps
         // to create a specific key.
         const SkSpan<const uint32_t>& samplerData = samplerDesc.asSpan();
-        GraphiteResourceKey::Builder builder(&key, kType, samplerData.size());
+        GraphiteResourceKey::Builder builder(&key, kType, SkTo<uint16_t>(samplerData.size()));
 
         for (size_t i = 0; i < samplerData.size(); i++) {
             builder[i] = samplerData[i];
@@ -246,8 +188,8 @@ sk_sp<Buffer> ResourceProvider::findOrCreateBuffer(
         // For the key we need ((sizeof(size_t) + (sizeof(uint32_t) - 1)) / (sizeof(uint32_t))
         // uint32_t's for the size and one uint32_t for the rest.
         static_assert(sizeof(uint32_t) == 4);
-        static const int kSizeKeyNum32DataCnt = (sizeof(size_t) + 3) / 4;
-        static const int kKeyNum32DataCnt =  kSizeKeyNum32DataCnt + 1;
+        static const uint16_t kSizeKeyNum32DataCnt = (sizeof(size_t) + 3) / 4;
+        static const uint16_t kKeyNum32DataCnt =  kSizeKeyNum32DataCnt + 1;
 
         SkASSERT(static_cast<uint32_t>(type) < (1u << 4));
         SkASSERT(static_cast<uint32_t>(accessPattern) < (1u << 2));
@@ -268,8 +210,7 @@ sk_sp<Buffer> ResourceProvider::findOrCreateBuffer(
     }
 
     if (Resource* resource =
-            fResourceCache->findAndRefResource(key, kBudgeted, shareable, unavailable)) {
-        update_and_sync_resource_label(resource, label);
+            fResourceCache->findAndRefResource(key, kBudgeted, shareable, label, unavailable)) {
         return sk_sp<Buffer>(static_cast<Buffer*>(resource));
     }
 
@@ -286,7 +227,7 @@ bool dimensions_are_valid(const int maxTextureSize, const SkISize& dimensions) {
     if (dimensions.isEmpty() ||
         dimensions.width()  > maxTextureSize ||
         dimensions.height() > maxTextureSize) {
-        SKGPU_LOG_W("Call to createBackendTexture has requested dimensions (%d, %d) larger than the"
+        SKIA_LOG_W("Call to createBackendTexture has requested dimensions (%d, %d) larger than the"
                     " supported gpu max texture size: %d. Or the dimensions are empty.",
                     dimensions.fWidth, dimensions.fHeight, maxTextureSize);
         return false;
@@ -299,7 +240,12 @@ BackendTexture ResourceProvider::createBackendTexture(SkISize dimensions, const 
     if (!dimensions_are_valid(fSharedContext->caps()->maxTextureSize(), dimensions)) {
         return {};
     }
-    return this->onCreateBackendTexture(dimensions, info);
+    auto tex = this->onCreateBackendTexture(dimensions, info);
+    if (tex.isValid()) {
+        GlobalResourceStats::RecordCreateBackendTexture(info.isProtected(),
+                                                        ComputeSize(dimensions, info));
+    }
+    return tex;
 }
 
 #ifdef SK_BUILD_FOR_ANDROID
@@ -311,11 +257,17 @@ BackendTexture ResourceProvider::createBackendTexture(AHardwareBuffer* hardwareB
     if (!dimensions_are_valid(fSharedContext->caps()->maxTextureSize(), dimensions)) {
         return {};
     }
-    return this->onCreateBackendTexture(hardwareBuffer,
-                                        isRenderable,
-                                        isProtectedContent,
-                                        dimensions,
-                                        fromAndroidWindow);
+    auto tex = this->onCreateBackendTexture(hardwareBuffer,
+                                            isRenderable,
+                                            isProtectedContent,
+                                            dimensions,
+                                            fromAndroidWindow);
+    if (tex.isValid()) {
+        const TextureInfo& info = tex.info();
+        GlobalResourceStats::RecordCreateBackendTexture(info.isProtected(),
+                                                        ComputeSize(dimensions, info));
+    }
+    return tex;
 }
 
 BackendTexture ResourceProvider::onCreateBackendTexture(AHardwareBuffer*,
@@ -328,6 +280,10 @@ BackendTexture ResourceProvider::onCreateBackendTexture(AHardwareBuffer*,
 #endif
 
 void ResourceProvider::deleteBackendTexture(const BackendTexture& texture) {
+    if (texture.isValid()) {
+        GlobalResourceStats::RecordDeleteBackendTexture(
+                texture.info().isProtected(), ComputeSize(texture.dimensions(), texture.info()));
+    }
     this->onDeleteBackendTexture(texture);
 }
 
@@ -341,9 +297,17 @@ void ResourceProvider::freeGpuResources() {
     fResourceCache->purgeResources();
 }
 
-void ResourceProvider::purgeResourcesNotUsedSince(StdSteadyClock::time_point purgeTime) {
-    this->onPurgeResourcesNotUsedSince(purgeTime);
-    fResourceCache->purgeResourcesNotUsedSince(purgeTime);
+void ResourceProvider::purgeResourcesNotUsedSince(
+        StdSteadyClock::time_point purgeTime,
+        std::optional<std::chrono::microseconds> microsMaxPurgingDur) {
+
+    std::optional<StdSteadyClock::time_point> quitPurgingTime;
+    if (microsMaxPurgingDur.has_value()) {
+        quitPurgingTime = { StdSteadyClock::now() + microsMaxPurgingDur.value() };
+    }
+
+    this->onPurgeResourcesNotUsedSince(purgeTime, quitPurgingTime);
+    fResourceCache->purgeResourcesNotUsedSince(purgeTime, quitPurgingTime);
 }
 
 const Caps* ResourceProvider::caps() const {

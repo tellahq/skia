@@ -21,7 +21,7 @@
 #include "include/docs/SkMultiPictureDocument.h"
 #include "include/encode/SkPngEncoder.h"
 #include "include/ports/SkFontMgr_empty.h"
-#include "src/base/SkBase64.h"
+#include "src/core/SkBase64.h"
 #include "src/core/SkPicturePriv.h"
 #include "src/ports/SkTypeface_FreeType.h"
 #include "src/utils/SkJSONWriter.h"
@@ -248,7 +248,11 @@ class SkpDebugPlayer {
     // Return the command list in JSON representation as a string
     std::string jsonCommandList(sk_sp<SkSurface> surface) {
       SkDynamicMemoryWStream stream;
-      SkJSONWriter writer(&stream, SkJSONWriter::Mode::kFast);
+      SkSerialProcs          procs;
+      procs.fImageProc = [](SkImage* img, void*) -> sk_sp<const SkData> {
+        return SkPngEncoder::Encode(nullptr, img, {});
+      };
+      SkJSONWriter           writer(&stream, procs, SkJSONWriter::Mode::kFast);
       writer.beginObject(); // root
       visibleCanvas()->toJSON(writer, udm, surface->getCanvas());
       writer.endObject(); // root
@@ -266,7 +270,7 @@ class SkpDebugPlayer {
       SkIRect clip = visibleCanvas()->getCurrentClip();
 
       SkDynamicMemoryWStream stream;
-      SkJSONWriter writer(&stream, SkJSONWriter::Mode::kFast);
+      SkJSONWriter           writer(&stream, SkSerialProcs{}, SkJSONWriter::Mode::kFast);
       writer.beginObject(); // root
 
       writer.appendName("ViewMatrix");
@@ -429,7 +433,7 @@ class SkpDebugPlayer {
         // Attempt to deserialize with an image sharing serial proc.
         auto deserialContext = std::make_unique<SkSharingDeserialContext>();
         SkDeserialProcs procs;
-        procs.fImageProc = SkSharingDeserialContext::deserializeImage;
+        procs.fImageDataProc = SkSharingContext::deserializeImage;
         procs.fImageCtx = deserialContext.get();
         sk_sp<SkFontMgr> fallback = SkFontMgr_New_Custom_Empty();
         procs.fTypefaceCtx = &fallback;
@@ -454,6 +458,7 @@ class SkpDebugPlayer {
           // Make debug canvas using bounds from SkPicture
           fBoundsArray.push_back(page.fPicture->cullRect().roundOut());
           std::unique_ptr<DebugCanvas> debugCanvas = std::make_unique<DebugCanvas>(fBoundsArray.back());
+
           debugCanvas->setLayerManagerAndFrame(fLayerManager.get(), i);
 
           // Only draw picture to the debug canvas once.

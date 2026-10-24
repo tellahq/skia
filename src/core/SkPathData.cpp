@@ -1,23 +1,27 @@
 /*
- * Copyright 2025 Google LLC.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
+#include "src/core/SkPathData.h"
+
+#include "include/core/SkPathBuilder.h"
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkSpan.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkSafeMath.h"
-#include "src/core/SkPathData.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkPathEnums.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPathRawShapes.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkSpanPriv.h"
 
+#include <array>
+#include <limits>
 #include <new>
 #include <optional>
 #include <type_traits>
@@ -27,18 +31,13 @@ SkPathData* SkPathData::PeekEmptySingleton() {
     return gEmpty;
 }
 
-static uint32_t next_pathdata_unique_id() {
+static uint64_t next_pathdata_unique_id() {
     constexpr int kHighBitsToMakeRoomForFillType = 2;
-
-    static std::atomic<int32_t> nextID{1};
-
-    uint32_t id;
-    do {
-        id = nextID.fetch_add(1, std::memory_order_relaxed);
-        // clear the high bits to make room for filltype
-        id <<= kHighBitsToMakeRoomForFillType;
-        id >>= kHighBitsToMakeRoomForFillType;
-    } while (id == 0);
+    constexpr uint64_t kMaxID =
+            std::numeric_limits<uint64_t>::max() >> kHighBitsToMakeRoomForFillType;
+    static std::atomic<uint64_t> nextID{1};
+    uint64_t id = nextID.fetch_add(1, std::memory_order_relaxed);
+    SkASSERT_RELEASE(id <= kMaxID);
     return id;
 }
 
@@ -70,9 +69,9 @@ private:
     size_t     fTotal;
 };
 
-const uint8_t gPtsPerVerb[] = {
+static constexpr auto gPtsPerVerb = std::to_array<uint8_t>({
     1, 1, 2, 2, 3, 0,  // move, line, quad, conic, cubic, close
-};
+});
 
 static inline bool valid_conic_weight(float w) {
     return w >= 0 && SkIsFinite(w);
@@ -182,7 +181,7 @@ SkPathData::SkPathData(size_t npts, size_t nvbs, size_t ncns)
 SkPathData::~SkPathData() {
     // We will implicitly call our IDChangeList here, notifying them that we are
     // being dstroyed.
-    SkDEBUGCODE(fUniqueID = 0xEEEEEEEE;)
+    SkDEBUGCODE(fUniqueID = 0xEEEEEEEEEEEEEEEEULL;)
 }
 
 void SkPathData::operator delete(void* p) {
@@ -221,6 +220,8 @@ sk_sp<SkPathData> SkPathData::Alloc(size_t npts, size_t nvbs, size_t ncns) {
 }
 
 bool SkPathData::finishInit(std::optional<SkRect> bounds, std::optional<uint8_t> segmentMask) {
+    SkASSERT(valid_path_data(fPoints, fVerbs, fConics));
+
     if (fPoints.empty()) {
         fBounds = SkRect::MakeEmpty();
         fSegmentMask = 0;
@@ -255,10 +256,10 @@ sk_sp<SkPathData> SkPathData::MakeTransform(const SkPathRaw& src, const SkMatrix
     }
 
     if (mx.hasPerspective()) {
-        SkPathBuilder bu;
-        bu.addRaw(src);
-        bu.transform(mx);
-        return bu.detachData();
+        return SkPathBuilder()
+            .addRaw(src, SkPathBuilder::Reserve::kExact)
+            .transform(mx)
+            .detachData();
     }
 
     // Allocate our result, so we can map the new points directly into it
@@ -294,19 +295,27 @@ sk_sp<SkPathData> SkPathData::makeTransform(const SkMatrix& mx) const {
     // not important for transform, just need a value
     const SkPathFillType ft = SkPathFillType::kDefault;
 
-    if (auto result = MakeTransform(this->raw(ft, SkResolveConvexity::kNo), mx)) {
-        // See if we can maintian our IsA status ...
-        if ((fType == SkPathIsAType::kOval || fType == SkPathIsAType::kRRect) &&
-            mx.rectStaysRect() && SkPathPriv::IsAxisAligned(fPoints))
-        {
-            auto [dir, start] =
-            SkPathPriv::TransformDirAndStart(mx, fType == SkPathIsAType::kRRect,
-                                             fIsA.fDirection, fIsA.fStartIndex);
-            result->setupIsA(fType, dir, start);
-        }
+    auto result = MakeTransform(this->raw(ft, SkResolveConvexity::kNo), mx);
+
+    if (!result) {
+        return nullptr;
+    }
+
+    if (fType == SkPathIsAType::kGeneral) {
         return result;
     }
-    return nullptr;
+
+    // See if we can maintain our IsA status ...
+    bool canMaintainIsA =
+            mx.rectStaysRect() && SkPathPriv::IsAxisAligned(fPoints) && !result->bounds().isEmpty();
+    if (!canMaintainIsA) {
+        return result;
+    }
+
+    auto [dir, start] = SkPathPriv::TransformDirAndStart(
+            mx, fType == SkPathIsAType::kRRect, fIsA.fDirection, fIsA.fStartIndex);
+    result->setupIsA(fType, dir, start);
+    return result;
 }
 
 sk_sp<SkPathData> SkPathData::makeOffset(SkVector v) const {

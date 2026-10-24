@@ -9,7 +9,7 @@
 #define SkSLAnalysis_DEFINED
 
 #include "include/private/SkSLSampleUsage.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 
 #include <cstdint>
 #include <memory>
@@ -83,6 +83,12 @@ bool ContainsRTAdjust(const Expression& expr);
 
 /** Determines if `expr` contains a reference to variable `var`. */
 bool ContainsVariable(const Expression& expr, const Variable& var);
+
+/**
+ * Unwraps index expressions, field accesses, and swizzles to locate the root Variable being
+ * referenced by `expr`, or returns null if `expr` does not reference a variable.
+ */
+const Variable* GetRootVariable(const Expression& expr);
 
 /** Determines if `expr` has any side effects. (Is the expression state-altering or pure?) */
 bool HasSideEffects(const Expression& expr);

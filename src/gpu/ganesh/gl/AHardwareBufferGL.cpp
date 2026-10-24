@@ -15,8 +15,10 @@
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "include/gpu/ganesh/gl/GrGLTypes.h"
-#include "include/private/base/SkLog.h"
+#include "include/private/SkLog.h"
+#include "src/gpu/GlobalResourceStats.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrSurface.h"
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
 #include "src/gpu/ganesh/gl/GrGLUtil.h"
 
@@ -28,6 +30,13 @@
 
 #define PROT_CONTENT_EXT_STR "EGL_EXT_protected_content"
 #define EGL_PROTECTED_CONTENT_EXT 0x32C0
+
+#if __has_include(<vndk/hardware_buffer.h>)
+    // When building for the Android framework, there are formats defined outside of those publicly
+    // available in android/hardware_buffer.h.
+    #include <vndk/hardware_buffer.h>
+    #define HAS_AHB_BGRA8_UNORM
+#endif
 
 namespace GrAHardwareBufferUtils {
 
@@ -64,6 +73,15 @@ GrBackendFormat GetGLBackendFormat(GrDirectContext* dContext,
             // (GrColorType and SkColorType can describe it).
             return GrBackendFormats::MakeGLExternal();
 #endif
+#ifdef HAS_AHB_BGRA8_UNORM
+        case AHARDWAREBUFFER_FORMAT_B8G8R8A8_UNORM:
+            // On some platforms, HWComposer requests BGRA_8888 (DRM_FORMAT_AR24)
+            // as the GPU client-composition / framebuffer render target. Map it to a
+            // renderable GL_BGRA8 2D format (needs GL_EXT_texture_format_BGRA8888, which the
+            // driver exposes) so output/renderable buffers pass isFormatRenderable() instead
+            // of falling through to a non-renderable external format and aborting.
+            return GrBackendFormats::MakeGL(GR_GL_BGRA8);
+#endif
         default:
             if (requireKnownFormat) {
                 return GrBackendFormat();
@@ -76,15 +94,23 @@ GrBackendFormat GetGLBackendFormat(GrDirectContext* dContext,
 
 class GLTextureHelper {
 public:
-    GLTextureHelper(GrGLuint texID, EGLImageKHR image, EGLDisplay display, GrGLuint texTarget)
-        : fTexID(texID)
-        , fImage(image)
-        , fDisplay(display)
-        , fTexTarget(texTarget) { }
+    GLTextureHelper(GrGLuint texID, EGLImageKHR image, EGLDisplay display, GrGLuint texTarget,
+                    size_t size, skgpu::Protected isProtected)
+            : fTexID(texID)
+            , fImage(image)
+            , fDisplay(display)
+            , fTexTarget(texTarget)
+            , fSize(size)
+            , fProtected(isProtected) {
+        skgpu::GlobalResourceStats::RecordCreateBackendTexture(isProtected, size);
+    }
+
     ~GLTextureHelper() {
         glDeleteTextures(1, &fTexID);
         // eglDestroyImageKHR will remove a ref from the AHardwareBuffer
         eglDestroyImageKHR(fDisplay, fImage);
+
+        skgpu::GlobalResourceStats::RecordDeleteBackendTexture(fProtected, fSize);
     }
     void rebind(GrDirectContext*);
 
@@ -93,6 +119,10 @@ private:
     EGLImageKHR fImage;
     EGLDisplay  fDisplay;
     GrGLuint    fTexTarget;
+
+    // For stats tracking
+    size_t fSize;
+    skgpu::Protected fProtected;
 };
 
 void GLTextureHelper::rebind(GrDirectContext* dContext) {
@@ -197,9 +227,12 @@ static GrBackendTexture make_gl_backend_texture(
     textureInfo.fFormat = GrBackendFormats::AsGLFormatEnum(backendFormat);
     textureInfo.fProtected = skgpu::Protected(isProtectedContent);
 
+    const size_t size = GrSurface::ComputeSize(backendFormat, {width, height},
+                                               /*colorSamplesPerPixel=*/1, skgpu::Mipmapped::kNo);
+
     *deleteProc = delete_gl_texture;
     *updateProc = update_gl_texture;
-    *imageCtx = new GLTextureHelper(texID, image, display, target);
+    *imageCtx = new GLTextureHelper(texID, image, display, target, size, textureInfo.fProtected);
 
     return GrBackendTextures::MakeGL(width, height, skgpu::Mipmapped::kNo, textureInfo);
 }
@@ -253,8 +286,27 @@ GrBackendTexture MakeGLBackendTexture(GrDirectContext* dContext,
         return GrBackendTexture();
     }
 
-    return make_gl_backend_texture(dContext, hardwareBuffer, width, height, deleteProc,
-                                   updateProc, imageCtx, isProtectedContent, backendFormat);
+    GrBackendTexture tex =
+            make_gl_backend_texture(dContext, hardwareBuffer, width, height, deleteProc,
+                                    updateProc, imageCtx, isProtectedContent, backendFormat);
+    // Retry if we can still fallback external texture target.
+    //
+    // Even when the format is known, an AHB can fail to be imported as a regular GL_TEXTURE_2D for
+    // reasons hidden from the GL API (e.g. lossy compression is meant for sample-only textures, in
+    // which case a driver might fail glEGLImageTargetTexture2DOES for regular texture targets).
+    //
+    // NOTE: We exclude this fallback when `isRenderable == true` since we never treat external
+    // formats as renderable. If we instead called MakeGLBackendTexture, we'd just fail the
+    // renderable validation check above.
+    if (!tex.isValid() &&
+        !isRenderable &&
+        backendFormat.textureType() != GrTextureType::kExternal) {
+        tex = make_gl_backend_texture(dContext, hardwareBuffer, width, height, deleteProc,
+                                      updateProc, imageCtx, isProtectedContent,
+                                      GrBackendFormats::MakeGLExternal());
+    }
+
+    return tex;
 }
 
 }  // namespace GrAHardwareBufferUtils

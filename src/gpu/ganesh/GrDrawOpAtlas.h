@@ -11,12 +11,13 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSize.h"
 #include "include/gpu/ganesh/GrBackendSurface.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
 #include "src/gpu/ganesh/GrAtlasTypes.h"
 #include "src/gpu/ganesh/GrDeferredUpload.h"
 #include "src/gpu/ganesh/GrSurfaceProxyView.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -124,7 +125,7 @@ public:
                          const void* image,
                          GrAtlasLocator*);
 
-    const GrSurfaceProxyView* getViews() const { return fViews; }
+    const GrSurfaceProxyView* getViews() const { return fViews.data(); }
 
     uint64_t atlasGeneration() const { return fAtlasGeneration; }
 
@@ -256,8 +257,8 @@ private:
         GrPlotList fPlotList;
     };
     // proxies kept separate to make it easier to pass them up to client
-    GrSurfaceProxyView fViews[GrPlotLocator::kMaxMultitexturePages];
-    Page fPages[GrPlotLocator::kMaxMultitexturePages];
+    std::array<GrSurfaceProxyView, GrPlotLocator::kMaxMultitexturePages> fViews;
+    std::array<Page, GrPlotLocator::kMaxMultitexturePages> fPages;
     uint32_t fMaxPages;
 
     uint32_t fNumActivePages;

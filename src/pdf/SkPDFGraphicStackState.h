@@ -1,12 +1,13 @@
-// Copyright 2019 Google LLC.
+// Copyright 2019 Google LLC
 // Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 #ifndef SkPDFGraphicStackState_DEFINED
 #define SkPDFGraphicStackState_DEFINED
 
+#include <array>
 #include "include/core/SkColor.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkFloatingPoint.h"
+#include "include/private/SkFloatingPoint.h"
 #include "src/core/SkClipStack.h"
 
 #include <cstdint>
@@ -27,7 +28,7 @@ struct SkPDFGraphicStackState {
     };
     // Must use stack for matrix, and for clip, plus one for no matrix or clip.
     inline static constexpr int kMaxStackDepth = 2;
-    Entry fEntries[kMaxStackDepth + 1];
+    std::array<Entry, kMaxStackDepth + 1> fEntries;
     int fStackDepth = 0;
     SkDynamicMemoryWStream* fContentStream;
 

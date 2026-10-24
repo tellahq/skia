@@ -25,15 +25,16 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkTypes.h"
+#include "include/effects/SkImageFilters.h"
 #include "include/effects/SkPerlinNoiseShader.h"
 #include "include/gpu/GpuTypes.h"
-#include "include/private/base/SkTPin.h"
-#include "src/base/SkFloatBits.h"
-#include "src/base/SkMathPriv.h"
+#include "include/private/SkTPin.h"
 #include "src/core/SkBlurMask.h"
 #include "src/core/SkColorPriv.h"
+#include "src/core/SkFloatBits.h"
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
+#include "src/core/SkMathPriv.h"
 #include "src/effects/SkEmbossMaskFilter.h"
 #include "tests/CtsEnforcement.h"
 #include "tests/Test.h"
@@ -50,12 +51,12 @@
 #include "include/gpu/graphite/Surface.h"
 #endif
 
-#include <math.h>
-#include <string.h>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <math.h>
+#include <string.h>
 
 struct GrContextOptions;
 
@@ -89,16 +90,16 @@ static SkPath draw50x50Rect() {
 }
 
 //Tests
-static BlurTest tests[] = {
-    { draw50x50Rect, 3, {
-        //inner half of blur
-        { 0, 0, 50, 50 },
-        //blur, but no path.
-        { 50 + strokeWidth/2, 50 + strokeWidth/2, 100, 100 },
-        //just an edge
-        { 40, strokeWidth, 60, 50 - strokeWidth },
-    }},
-};
+static constexpr auto tests = std::to_array<BlurTest>({
+        BlurTest{ draw50x50Rect, 3, {
+                // inner half of blur
+                { 0, 0, 50, 50 },
+                // blur, but no path.
+                { 50 + strokeWidth/2, 50 + strokeWidth/2, 100, 100 },
+                // just an edge
+                { 40, strokeWidth, 60, 50 - strokeWidth },
+        }},
+});
 
 /** Assumes that the ref draw was completely inside ref canvas --
     implies that everything outside is "bgColor".
@@ -365,13 +366,16 @@ DEF_TEST(BlurSigmaRange, reporter) {
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 DEF_TEST(BlurAsABlur, reporter) {
-    const SkBlurStyle styles[] = {
-        kNormal_SkBlurStyle, kSolid_SkBlurStyle, kOuter_SkBlurStyle, kInner_SkBlurStyle
-    };
-    const SkScalar sigmas[] = {
-        // values <= 0 should not success for a blur
-        -1, 0, 0.5f, 2
-    };
+    static constexpr auto styles = std::to_array<SkBlurStyle>({
+            kNormal_SkBlurStyle,
+            kSolid_SkBlurStyle,
+            kOuter_SkBlurStyle,
+            kInner_SkBlurStyle,
+    });
+    static constexpr auto sigmas = std::to_array<SkScalar>({
+            // values <= 0 should not success for a blur
+            -1, 0, 0.5f, 2,
+    });
 
     // Test asABlur for SkBlurMaskFilter
     //
@@ -666,3 +670,41 @@ DEF_GRAPHITE_TEST_FOR_RENDERING_CONTEXTS(BlurPointCircle,
 }
 
 #endif // SK_GRAPHITE
+
+DEF_TEST(blur_b508075339, reporter) {
+    // This test verifies that eval_blur_passes correctly handles a specific edge case where
+    // the source and destination bounds do not intersect on the axis being processed.
+    //
+    // The parameters are chosen to create the following scenario:
+    // 1. A very small sigmaX (0.390625f) evaluates to a 1D blur window of 1 on the X-axis
+    //    (when SK_AVOID_SLOW_RASTER_PIPELINE_BLURS is active). A window of 1 causes the
+    //    blur engine to skip the X-pass entirely.
+    // 2. A large negative offsetX (-65.618912f) shifts the source image completely off the
+    //    left side of the 64x64 canvas.
+    // 3. Despite being off-canvas, the blur radius expands the transparent pixels just enough
+    //    that they touch the canvas boundary. This triggers padding logic (makePixelOutset)
+    //    that slightly expands the destination bounds relative to the source.
+    //
+    // Historically, skipping the X-pass combined with this artificial bounds padding meant
+    // that the starting X-coordinate for the Y-pass (loopStart) could be greater than the
+    // source image width.
+    constexpr int kCanvasSize = 64;
+    constexpr float sigmaX = 0.390625f;
+    constexpr float sigmaY = 99.609375f;
+    constexpr float offsetX = -65.618912f;
+    constexpr float offsetY = -99.999985f;
+
+    auto inner = SkImageFilters::Offset(offsetX, offsetY, nullptr);
+    auto filter = SkImageFilters::Blur(sigmaX, sigmaY, std::move(inner));
+
+    auto surface = SkSurfaces::Raster(SkImageInfo::MakeN32Premul(kCanvasSize, kCanvasSize));
+    REPORTER_ASSERT(reporter, surface);
+    SkCanvas* canvas = surface->getCanvas();
+
+    SkPaint paint;
+    paint.setImageFilter(std::move(filter));
+
+    // This drawRect triggers the image filter graph evaluation. The test passes if it
+    // completes without triggering an SkASSERT in SkBitmap::getAddr.
+    canvas->drawRect(SkRect::MakeWH(kCanvasSize, kCanvasSize), paint);
+}

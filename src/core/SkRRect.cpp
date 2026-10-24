@@ -13,15 +13,16 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "src/base/SkBuffer.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkFloatingPoint.h"
+#include "src/core/SkBuffer.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPathRawShapes.h"
 #include "src/core/SkRRectPriv.h"
 #include "src/core/SkRectPriv.h"
 #include "src/core/SkScaleToSides.h"
 #include "src/core/SkStringUtils.h"
+#include "src/utils/SkFloatUtils.h"
 
 #include <algorithm>
 #include <cstring>
@@ -62,8 +63,8 @@ void SkRRect::setRectXY(const SkRect& rect, SkScalar xRad, SkScalar yRad) {
 
     if (fRect.width() < xRad+xRad || fRect.height() < yRad+yRad) {
         // At most one of these two divides will be by zero, and neither numerator is zero.
-        SkScalar scale = std::min(sk_ieee_float_divide(fRect. width(), xRad + xRad),
-                                     sk_ieee_float_divide(fRect.height(), yRad + yRad));
+        float scale = std::min(sk_ieee_float_divide(fRect.width(), xRad + xRad),
+                               sk_ieee_float_divide(fRect.height(), yRad + yRad));
         SkASSERT(scale < SK_Scalar1);
         xRad *= scale;
         yRad *= scale;
@@ -79,9 +80,13 @@ void SkRRect::setRectXY(const SkRect& rect, SkScalar xRad, SkScalar yRad) {
         fRadii[i].set(xRad, yRad);
     }
     fType = kSimple_Type;
-    if (xRad >= SkScalarHalf(fRect.width()) && yRad >= SkScalarHalf(fRect.height())) {
+    if (xRad >= (fRect.width() / 2.f) && yRad >= (fRect.height() / 2.f)) {
         fType = kOval_Type;
-        // TODO: assert that all the x&y radii are already W/2 & H/2
+        xRad = SkRectPriv::HalfWidth(fRect);
+        yRad = SkRectPriv::HalfHeight(fRect);
+        for (int i = 0; i < 4; ++i) {
+            fRadii[i].set(xRad, yRad);
+        }
     }
 
     SkASSERT(this->isValid());
@@ -130,7 +135,7 @@ void SkRRect::setNinePatch(const SkRect& rect, SkScalar leftRad, SkScalar topRad
     rightRad = std::max(rightRad, 0.0f);
     bottomRad = std::max(bottomRad, 0.0f);
 
-    SkScalar scale = SK_Scalar1;
+    float scale = 1.0f;
     if (leftRad + rightRad > fRect.width()) {
         scale = fRect.width() / (leftRad + rightRad);
     }
@@ -138,7 +143,7 @@ void SkRRect::setNinePatch(const SkRect& rect, SkScalar leftRad, SkScalar topRad
         scale = std::min(scale, fRect.height() / (topRad + bottomRad));
     }
 
-    if (scale < SK_Scalar1) {
+    if (scale < 1.0f) {
         leftRad *= scale;
         topRad *= scale;
         rightRad *= scale;
@@ -146,8 +151,10 @@ void SkRRect::setNinePatch(const SkRect& rect, SkScalar leftRad, SkScalar topRad
     }
 
     if (leftRad == rightRad && topRad == bottomRad) {
-        if (leftRad >= SkScalarHalf(fRect.width()) && topRad >= SkScalarHalf(fRect.height())) {
+        if (leftRad >= (fRect.width() / 2.f) && topRad >= (fRect.height() / 2.f)) {
             fType = kOval_Type;
+            leftRad = rightRad = SkRectPriv::HalfWidth(fRect);
+            topRad = bottomRad = SkRectPriv::HalfHeight(fRect);
         } else if (0 == leftRad || 0 == topRad) {
             // If the left and (by equality check above) right radii are zero then it is a rect.
             // Same goes for top/bottom.
@@ -362,15 +369,38 @@ bool SkRRectPriv::AllCornersCircular(const SkRRect& rr, float tolerance) {
 bool SkRRectPriv::IsRelativelyCircular(float rx, float ry, float tolerance) {
     // The ellipse is considered relatively circular if either `rx/ry` or `ry/rx` is within
     // `tolerance` of 1.0, but this is equivalent to comparing the absolute difference between
-    // `rx` and `ry` to `tolerance` multiplied by the largest radii.
+    // `rx` and `ry` to `tolerance` multiplied by the largest radii. We also consider the case
+    // where both `rx` and `ry` are less than tolerance to be "circular" with a radius of 0.
+#if defined(SK_GRAPHITE_USE_LEGACY_RRECT_CLIP_SHADER)
     return std::abs(rx - ry) <= tolerance * std::max(rx, ry);
+#else
+    return (rx <= tolerance && ry <= tolerance) ||
+           std::abs(rx - ry) <= tolerance * std::max(rx, ry);
+#endif
 }
 
-bool SkRRectPriv::AllCornersRelativelyCircular(const SkRRect &rr, float tolerance) {
+bool SkRRectPriv::AllCornersRelativelyCircular(const SkRRect& rr, float tolerance) {
     return IsRelativelyCircular(rr.fRadii[0].fX, rr.fRadii[0].fY, tolerance) &&
            IsRelativelyCircular(rr.fRadii[1].fX, rr.fRadii[1].fY, tolerance) &&
            IsRelativelyCircular(rr.fRadii[2].fX, rr.fRadii[2].fY, tolerance) &&
            IsRelativelyCircular(rr.fRadii[3].fX, rr.fRadii[3].fY, tolerance);
+}
+
+bool SkRRect::contains(const SkPoint& point) const {
+    if (!this->getBounds().contains(point.fX, point.fY)) {
+        // If 'point' isn't contained by the RR's bounds then the RR definitely
+        // doesn't contain it.
+        return false;
+    }
+
+    if (this->isRect()) {
+        // The prior test was sufficient.
+        return true;
+    }
+
+    // At this point we know `point` is inside the bounds of this RR. Check to
+    // see it is inside all the curves.
+    return this->checkCornerContainment(point.fX, point.fY);
 }
 
 bool SkRRect::contains(const SkRect& rect) const {
@@ -427,9 +457,11 @@ void SkRRect::computeType() {
     }
 
     if (allRadiiEqual) {
-        if (fRadii[0].fX >= SkScalarHalf(fRect.width()) &&
-            fRadii[0].fY >= SkScalarHalf(fRect.height())) {
+        if (fRadii[0].fX >= (fRect.width() / 2.f) && fRadii[0].fY >= (fRect.height() / 2.f)) {
             fType = kOval_Type;
+            for (int i = 0; i < 4; ++i) {
+                fRadii[i].set(SkRectPriv::HalfWidth(fRect), SkRectPriv::HalfHeight(fRect));
+            }
         } else {
             fType = kSimple_Type;
         }
@@ -466,13 +498,16 @@ std::optional<SkRRect> SkRRect::transform(const SkMatrix& matrix) const {
         return {};
     }
 
+    if (this->isEmpty()) {
+        return MakeEmpty();
+    }
+
     const SkRect newRect = matrix.mapRect(fRect);
-    if (!newRect.isFinite()) {
+    if (!newRect.isFinite() || newRect.isEmpty()) {
         return {};
     }
 
     switch (this->getType()) {
-        case kEmpty_Type: return MakeEmpty();
         case kRect_Type:  return MakeRect(newRect);
         case kOval_Type:  return MakeOval(newRect);
         default:
@@ -532,8 +567,8 @@ bool SkRRect::transform(const SkMatrix& matrix, SkRRect* dst) const {
     }
     if (kOval_Type == fType) {
         for (int i = 0; i < 4; ++i) {
-            dst->fRadii[i].fX = SkScalarHalf(newRect.width());
-            dst->fRadii[i].fY = SkScalarHalf(newRect.height());
+            dst->fRadii[i].fX = newRect.width() / 2.f;
+            dst->fRadii[i].fY = newRect.height() / 2.f;
         }
         SkASSERT(dst->isValid());
         return true;
@@ -610,7 +645,7 @@ bool SkRRect::transform(const SkMatrix& matrix, SkRRect* dst) const {
 
     dst->scaleRadii();
 
-    if (!AreRectAndRadiiValid(dst->fRect, dst->fRadii)) {
+    if (!SkRRectPriv::AreRectAndRadiiValid(dst->fRect, dst->fRadii)) {
         return false;
     }
 
@@ -722,16 +757,40 @@ void SkRRect::dump(bool asHex) const { SkDebugf("%s\n", this->dumpToString(asHex
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
- *  We need all combinations of predicates to be true to have a "safe" radius value.
- */
-static bool are_radius_check_predicates_valid(SkScalar rad, SkScalar min, SkScalar max) {
-    return (min <= max) && (rad <= max - min) && (min + rad <= max) && (max - rad >= min) &&
-           rad >= 0;
+static bool are_radii_predicates_valid(SkScalar radiusFromMin,
+                                       SkScalar radiusFromMax,
+                                       SkScalar minCoord,
+                                       SkScalar maxCoord) {
+    if (minCoord > maxCoord || radiusFromMin < 0 || radiusFromMax < 0) {
+        return false;
+    }
+
+    const SkScalar limit = maxCoord - minCoord;
+    const SkScalar sum = radiusFromMin + radiusFromMax;
+    const SkScalar ptFromMin = minCoord + radiusFromMin;
+    const SkScalar ptFromMax = maxCoord - radiusFromMax;
+
+    // Accept either floats that are within an absolute tolerance of each other
+    // (for small numbers) or within a few ULPs (Units in the Last Place, i.e.
+    // the step between adjacent representable floats, for large numbers) to be
+    // robust against floating-point imprecision when translated. See
+    // https://skia-review.git.corp.google.com/c/skia/+/1279236.
+    const bool sumValid =
+            sum <= limit || SkScalarNearlyEqual(sum, limit) ||
+            SkFloatingPoint<float, 4>(sum).AlmostEquals(SkFloatingPoint<float, 4>(limit));
+    const bool ptsValid =
+            ptFromMin <= ptFromMax || SkScalarNearlyEqual(ptFromMin, ptFromMax) ||
+            SkFloatingPoint<float, 4>(ptFromMin).AlmostEquals(SkFloatingPoint<float, 4>(ptFromMax));
+
+    if (!sumValid || !ptsValid) {
+        return false;
+    }
+
+    return minCoord <= ptFromMax && ptFromMin <= maxCoord;
 }
 
 bool SkRRect::isValid() const {
-    if (!AreRectAndRadiiValid(fRect, fRadii)) {
+    if (!SkRRectPriv::AreRectAndRadiiValid(fRect, fRadii)) {
         return false;
     }
 
@@ -769,15 +828,25 @@ bool SkRRect::isValid() const {
                 return false;
             }
             break;
-        case kOval_Type:
-            if (fRect.isEmpty() || allRadiiZero || !allRadiiSame || allCornersSquare) {
-                return false;
-            }
-
-            for (int i = 0; i < 4; ++i) {
-                if (!SkScalarNearlyEqual(fRadii[i].fX, SkRectPriv::HalfWidth(fRect)) ||
-                    !SkScalarNearlyEqual(fRadii[i].fY, SkRectPriv::HalfHeight(fRect))) {
+        case kOval_Type: {
+                if (fRect.isEmpty() || allRadiiZero || !allRadiiSame || allCornersSquare) {
                     return false;
+                }
+
+                float desiredWidthVal = SkRectPriv::HalfWidth(fRect);
+                float desiredHeightVal = SkRectPriv::HalfHeight(fRect);
+                const SkFloatingPoint<float, 4> desiredWidth(desiredWidthVal);
+                const SkFloatingPoint<float, 4> desiredHeight(desiredHeightVal);
+
+                for (int i = 0; i < 4; ++i) {
+                    const SkFloatingPoint<float, 4> x(fRadii[i].fX), y(fRadii[i].fY);
+                    bool xMatches = SkScalarNearlyEqual(fRadii[i].fX, desiredWidthVal) ||
+                                    x.AlmostEquals(desiredWidth);
+                    bool yMatches = SkScalarNearlyEqual(fRadii[i].fY, desiredHeightVal) ||
+                                    y.AlmostEquals(desiredHeight);
+                    if (!xMatches || !yMatches) {
+                        return false;
+                    }
                 }
             }
             break;
@@ -803,18 +872,28 @@ bool SkRRect::isValid() const {
     return true;
 }
 
-bool SkRRect::AreRectAndRadiiValid(const SkRect& rect, const SkVector radii[4]) {
+bool SkRRectPriv::AreRectAndRadiiValid(const SkRect& rect, const SkVector radii[4]) {
     if (!rect.isFinite() || !rect.isSorted()) {
         return false;
     }
-    for (int i = 0; i < 4; ++i) {
-        if (!are_radius_check_predicates_valid(radii[i].fX, rect.fLeft, rect.fRight) ||
-            !are_radius_check_predicates_valid(radii[i].fY, rect.fTop, rect.fBottom)) {
-            return false;
-        }
-    }
-    return true;
+    return are_radii_predicates_valid(radii[SkRRect::kUpperLeft_Corner].fX,
+                                      radii[SkRRect::kUpperRight_Corner].fX,
+                                      rect.fLeft,
+                                      rect.fRight) &&
+           are_radii_predicates_valid(radii[SkRRect::kLowerLeft_Corner].fX,
+                                      radii[SkRRect::kLowerRight_Corner].fX,
+                                      rect.fLeft,
+                                      rect.fRight) &&
+           are_radii_predicates_valid(radii[SkRRect::kUpperLeft_Corner].fY,
+                                      radii[SkRRect::kLowerLeft_Corner].fY,
+                                      rect.fTop,
+                                      rect.fBottom) &&
+           are_radii_predicates_valid(radii[SkRRect::kUpperRight_Corner].fY,
+                                      radii[SkRRect::kLowerRight_Corner].fY,
+                                      rect.fTop,
+                                      rect.fBottom);
 }
+
 ///////////////////////////////////////////////////////////////////////////////
 
 SkRect SkRRectPriv::InnerBounds(const SkRRect& rr) {
@@ -981,7 +1060,7 @@ SkRRect SkRRectPriv::ConservativeIntersect(const SkRRect& a, const SkRRect& b) {
     // If the radii are scaled, the combination of radii from two adjacent corners doesn't fit.
     // Normally for a regularly constructed SkRRect, we want this scaling, but in this case it means
     // the intersection shape is definitively not a round rect.
-    if (!SkRRect::AreRectAndRadiiValid(intersection.fRect, intersection.fRadii) ||
+    if (!SkRRectPriv::AreRectAndRadiiValid(intersection.fRect, intersection.fRadii) ||
         intersection.scaleRadii()) {
         return SkRRect::MakeEmpty();
     }

@@ -12,10 +12,10 @@
 #include "include/core/SkImageInfo.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkMathPriv.h"
+#include "include/private/SkTemplates.h"
 #include "src/codec/SkCodecPriv.h"
 #include "src/codec/SkSampler.h"
+#include "src/core/SkMathPriv.h"
 
 SkSampledCodec::SkSampledCodec(SkCodec* codec)
     : INHERITED(codec)
@@ -121,11 +121,11 @@ SkCodec::Result SkSampledCodec::onGetAndroidPixels(const SkImageInfo& info, void
             if (incResult == SkCodec::kSuccess) {
                 return SkCodec::kSuccess;
             }
-            SkASSERT(incResult == SkCodec::kIncompleteInput || incResult == SkCodec::kErrorInInput);
-
-            // FIXME: Can zero initialized be read from SkCodec::fOptions?
-            this->codec()->fillIncompleteImage(scaledInfo, pixels, rowBytes,
-                    options.fZeroInitialized, scaledSubsetHeight, rowsDecoded);
+            if (incResult == SkCodec::kIncompleteInput || incResult == SkCodec::kErrorInInput) {
+                // FIXME: Can zero initialized be read from SkCodec::fOptions?
+                this->codec()->fillIncompleteImage(scaledInfo, pixels, rowBytes,
+                        options.fZeroInitialized, scaledSubsetHeight, rowsDecoded);
+            }
             return incResult;
         } else if (startResult != SkCodec::kUnimplemented) {
             return startResult;
@@ -246,11 +246,11 @@ SkCodec::Result SkSampledCodec::sampledDecode(const SkImageInfo& info, void* pix
             if (incResult == SkCodec::kSuccess) {
                 return SkCodec::kSuccess;
             }
-            SkASSERT(incResult == SkCodec::kIncompleteInput || incResult == SkCodec::kErrorInInput);
-
-            SkASSERT(rowsDecoded <= info.height());
-            this->codec()->fillIncompleteImage(info, pixels, rowBytes, options.fZeroInitialized,
-                                               info.height(), rowsDecoded);
+            if (incResult == SkCodec::kIncompleteInput || incResult == SkCodec::kErrorInInput) {
+                SkASSERT(rowsDecoded <= info.height());
+                this->codec()->fillIncompleteImage(info, pixels, rowBytes, options.fZeroInitialized,
+                                                   info.height(), rowsDecoded);
+            }
             return incResult;
         } else if (startResult == SkCodec::kIncompleteInput
                 || startResult == SkCodec::kErrorInInput) {

@@ -18,14 +18,15 @@
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkGradient.h"
 #include "include/utils/SkParsePath.h"
-#include "src/base/SkTime.h"
-#include "src/base/SkUTF.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkGeometry.h"
+#include "src/core/SkTime.h"
+#include "src/core/SkUTF.h"
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/ClickHandlerSlide.h"
 
+#include <array>
 #include <stdlib.h>
 
 // http://code.google.com/p/skia/issues/detail?id=32
@@ -75,7 +76,7 @@ static void test_cubic2() {
 class PathSlide : public ClickHandlerSlide {
     SkScalar fPrevSecs;
     SkScalar fDStroke, fStroke, fMinStroke, fMaxStroke;
-    SkPath fPath[6];
+    std::array<SkPath, 6> fPath;
     bool fShowHairline;
 
 public:
@@ -136,11 +137,11 @@ public:
 
         canvas->translate(50, 50);
 
-        static const SkPaint::Join gJoins[] = {
+        static constexpr auto gJoins = std::to_array<SkPaint::Join>({
             SkPaint::kBevel_Join,
             SkPaint::kMiter_Join,
             SkPaint::kRound_Join
-        };
+        });
 
         for (size_t i = 0; i < std::size(gJoins); i++) {
             canvas->save();
@@ -179,7 +180,7 @@ DEF_SLIDE( return new PathSlide; )
 //////////////////////////////////////////////////////////////////////////////
 
 #include "include/effects/SkCornerPathEffect.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 
 class ArcToSlide : public ClickHandlerSlide {
     bool fDoFrame, fDoCorner, fDoConic;
@@ -187,7 +188,7 @@ class ArcToSlide : public ClickHandlerSlide {
     enum {
         N = 4
     };
-    SkPoint fPts[N];
+    std::array<SkPoint, N> fPts;
 
 public:
     ArcToSlide() : fDoFrame(false), fDoCorner(false), fDoConic(false) {
@@ -276,7 +277,7 @@ class FatStrokeSlide : public ClickHandlerSlide {
     enum {
         N = 4
     };
-    SkPoint fPts[N];
+    std::array<SkPoint, N> fPts;
 
 public:
     FatStrokeSlide()
@@ -448,8 +449,8 @@ public:
 
         {
             paint.setColor(SK_ColorRED);
-            SkScalar t[2];
-            int n = compute_parallel_to_base(fPts, t);
+            std::array<SkScalar, 2> t;
+            int n = compute_parallel_to_base(fPts, t.data());
             SkPoint loc;
             SkVector tan;
             for (int i = 0; i < n; ++i) {

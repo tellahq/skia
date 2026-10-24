@@ -11,11 +11,13 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkString.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkChecksum.h"
 #include "tools/fonts/FontToolUtils.h"
 
 #include "bench/gUniqueGlyphIDs.h"
+
+#include <array>
 
 #define gUniqueGlyphIDs_Sentinel    0xFFFF
 
@@ -67,13 +69,14 @@ static uint32_t hasher0(uint32_t value) {
     return value ^ (value >> 8);
 }
 
-static const struct {
+struct HashTestCase {
     const char* fName;
     HasherProc  fHasher;
-} gRec[] = {
-    { "hasher0",  hasher0 },
-    { "hasher2",  SkChecksum::Mix },
 };
+static constexpr auto gRec = std::to_array<HashTestCase>({
+        HashTestCase{"hasher0", hasher0},
+        HashTestCase{"hasher2", SkChecksum::Mix},
+});
 
 #define kMaxHashBits   12
 #define kMaxHashCount  (1 << kMaxHashBits)
@@ -150,7 +153,7 @@ DEF_BENCH( return new FontCacheBench(); )
 
 class FontPathBench : public Benchmark {
     SkFont fFont;
-    SkGlyphID fGlyphs[100];
+    std::array<SkGlyphID, 100> fGlyphs;
     SkString fName;
     const bool fOneAtATime;
 

@@ -11,9 +11,11 @@
 #include "include/core/SkPath.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkPathPriv.h"
+#include "src/core/SkRandom.h"
+
+#include <array>
 
 enum class PathIterType {
     kOldIter,
@@ -22,9 +24,13 @@ enum class PathIterType {
     kEdge,
     kPathIter,
 };
-const char* gPathIterNames[] = {
-    "olditer", "newiter", "priv", "edge", "pathiter",
-};
+static constexpr auto gPathIterNames = std::to_array<const char*>({
+        "olditer",
+        "newiter",
+        "priv",
+        "edge",
+        "pathiter",
+});
 
 static int rand_pts(SkRandom& rand, SkPoint pts[4]) {
     int n = rand.nextU() & 3;

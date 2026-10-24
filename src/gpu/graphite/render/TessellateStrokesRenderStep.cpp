@@ -10,15 +10,15 @@
 #include "include/core/SkM44.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPath.h"
+#include "include/core/SkPoint.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkStrokeRec.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkPoint_impl.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "src/base/SkEnumBitMask.h"
-#include "src/base/SkVx.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkSLTypeShared.h"
+#include "src/core/SkVx.h"
 #include "src/gpu/graphite/Attribute.h"
 #include "src/gpu/graphite/DrawOrder.h"
 #include "src/gpu/graphite/DrawParams.h"
@@ -88,23 +88,26 @@ static constexpr SkSpan<const Attribute> kAttributes[2] = {kAttributesWithCurveT
 
 }  // namespace
 
-TessellateStrokesRenderStep::TessellateStrokesRenderStep(Layout layout, bool infinitySupport)
+TessellateStrokesRenderStep::TessellateStrokesRenderStep(Layout layout, bool infinitySupport,
+                                                         bool inverseFill)
         : RenderStep(layout,
-                     RenderStepID::kTessellateStrokes,
-                     Flags::kRequiresMSAA | Flags::kPerformsShading |
-                     Flags::kAppendDynamicInstances,
+                     inverseFill ? RenderStepID::kTessellateStrokes_InverseFill
+                                 : RenderStepID::kTessellateStrokes_Fill,
+                     (inverseFill ? Flags::kNone : Flags::kPerformsShading)
+                            | Flags::kRequiresMSAA | Flags::kAppendDynamicInstances,
                      /*uniforms=*/{{"affineMatrix", SkSLType::kFloat4},
                                    {"translate", SkSLType::kFloat2},
                                    {"maxScale", SkSLType::kFloat}},
                      PrimitiveType::kTriangleStrip,
-                     kDirectDepthLessPass,
+                     inverseFill ? kIncrementStencilPass : kDirectDepthLessPass,
                      /*staticAttrs=*/ {},
-                     /*appendAttrs=*/kAttributes[infinitySupport])
+                     /*appendAttrs=*/kAttributes[infinitySupport],
+                     /*storageUniforms=*/{})
         , fInfinitySupport(infinitySupport) {}
 
 TessellateStrokesRenderStep::~TessellateStrokesRenderStep() {}
 
-std::string TessellateStrokesRenderStep::vertexSkSL() const {
+std::string TessellateStrokesRenderStep::vertexSkSL(const RootNodesInfo&) const {
     // TODO: Assumes vertex ID support for now, max edges must equal
     // skgpu::tess::FixedCountStrokes::kMaxEdges -> (2^14 - 1) -> 16383
     return SkSL::String::printf(
@@ -122,6 +125,7 @@ std::string TessellateStrokesRenderStep::vertexSkSL() const {
 }
 
 void TessellateStrokesRenderStep::writeVertices(DrawWriter* dw,
+                                                StorageContext* /*storageContext*/,
                                                 const DrawParams& params,
                                                 uint32_t ssboIndex) const {
     SkPath path = params.geometry().shape().asPath(); // TODO: Iterate the Shape directly

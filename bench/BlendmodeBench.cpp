@@ -11,11 +11,13 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTextBlob.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkBlendModePriv.h"
+#include "src/core/SkRandom.h"
 #include "tools/DecodeUtils.h"
 #include "tools/Resources.h"
 #include "tools/fonts/FontToolUtils.h"
+
+#include <array>
 
 namespace {
 enum Type {
@@ -25,9 +27,11 @@ enum Type {
 };
 }
 
-const char* gTypeNames[] = {
-    "mask", "rect", "sprite",
-};
+static constexpr auto gTypeNames = std::to_array<const char*>({
+        "mask",
+        "rect",
+        "sprite",
+});
 
 // Benchmark that draws non-AA rects or AA text with an SkBlendMode.
 class XfermodeBench : public Benchmark {

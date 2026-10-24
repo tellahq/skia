@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2019 The LUCI Authors. All rights reserved.
+# Copyright 2019 The LUCI Authors
 # Use of this source code is governed under the Apache License, Version 2.0
 # that can be found in the LICENSE file.
 
@@ -240,17 +240,26 @@ def main():
   # environment entirely via vpython.
   os.environ['PYTHONPATH'] = engine_path
 
-  spec = '.vpython3'
+  spec = 'vpython.toml'
   debugger = os.environ.get('RECIPE_DEBUGGER', '')
   if debugger.startswith('pycharm'):
-    spec = '.pycharm.vpython3'
+    spec = 'pycharm.vpython.toml'
   elif debugger.startswith('vscode'):
-    spec = '.vscode.vpython3'
+    spec = 'vscode.vpython.toml'
+
+  spec_path = os.path.join(engine_path, spec)
+  if not os.path.exists(spec_path):
+    spec = '.vpython3'
+    if debugger.startswith('pycharm'):
+      spec = '.pycharm.vpython3'
+    elif debugger.startswith('vscode'):
+      spec = '.vscode.vpython3'
+    spec_path = os.path.join(engine_path, spec)
 
   argv = ([
       vpython,
       '-vpython-spec',
-      os.path.join(engine_path, spec),
+      spec_path,
       '-u',
       os.path.join(engine_path, 'recipe_engine', 'main.py'),
   ] + args)

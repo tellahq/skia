@@ -10,8 +10,8 @@
 #include "include/gpu/ShaderErrorHandler.h"
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/TextureInfo.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "src/gpu/graphite/ContextOptionsPriv.h"
 #include "src/gpu/graphite/RenderPassDesc.h"
 #include "src/gpu/graphite/ResourceTypes.h"
@@ -24,9 +24,23 @@ namespace skgpu::graphite {
 
 Caps::Caps()
         : fShaderCaps(std::make_unique<SkSL::ShaderCaps>())
-        , fCapabilities(new SkCapabilities()) {}
+        , fCapabilities(new SkCapabilities()) {
+    this->setDefaultShaderCaps();
+}
 
 Caps::~Caps() {}
+
+void Caps::setDefaultShaderCaps() {
+    fShaderCaps->fFlatInterpolationSupport = true;
+    fShaderCaps->fShaderDerivativeSupport = true;
+    fShaderCaps->fExplicitTextureLodSupport = true;
+    fShaderCaps->fSampleMaskSupport = true;
+    fShaderCaps->fInfinitySupport = true;
+    fShaderCaps->fIntegerSupport = true;
+    fShaderCaps->fNonsquareMatrixSupport = true;
+    fShaderCaps->fInverseHyperbolicSupport = true;
+    fShaderCaps->fFloatIs32Bits = true;
+}
 
 void Caps::finishInitialization(const ContextOptions& options) {
     fCapabilities->initSkCaps(fShaderCaps.get());
@@ -55,6 +69,20 @@ void Caps::finishInitialization(const ContextOptions& options) {
     fSupportBilerpFromGlyphAtlas = options.fSupportBilerpFromGlyphAtlas;
     fRequireOrderedRecordings = options.fRequireOrderedRecordings;
     fSetBackendLabels = options.fSetBackendLabels;
+    fAvoidDepthMode = options.fAvoidDepthMode;
+
+    // Enable setting this flag from either the private or public context options.
+    fDrawListLayer |= options.fUseDrawListLayer;
+
+    constexpr int kMaxFallbackTextureSize = 8192;
+    fResourceBindingReqs.fMaxFallbackTextureSize =
+            std::max(std::min(kMaxFallbackTextureSize, fMaxTextureSize), 1);
+
+    constexpr int kBytesPerTexel = 16;  // 4 floats (RGBA32F) per fallback texel
+    fResourceBindingReqs.fMaxFallbackTextureBytes =
+            fResourceBindingReqs.fMaxFallbackTextureSize *
+            fResourceBindingReqs.fMaxFallbackTextureSize *
+            kBytesPerTexel;
 }
 
 sk_sp<SkCapabilities> Caps::capabilities() const { return fCapabilities; }
@@ -141,6 +169,14 @@ bool Caps::isSupported(const TextureInfo& info,
 
 bool Caps::isTexturable(const TextureInfo& info, bool allowMSAA) const {
     return this->isSupported(info, TextureUsage::kSample,
+                             allowMSAA,
+                             /*allowExternal=*/true,
+                             /*allowCompressed=*/true,
+                             /*allowProtected=*/true);
+}
+
+bool Caps::isReadable(const TextureInfo& info, bool allowMSAA) const {
+    return this->isSupported(info, TextureUsage::kRead,
                              allowMSAA,
                              /*allowExternal=*/true,
                              /*allowCompressed=*/true,
@@ -278,6 +314,17 @@ TextureInfo Caps::getDefaultSampledTextureInfo(SkColorType colorType,
                                        Discardable::kNo);
 }
 
+TextureInfo Caps::getDefaultReadableTextureInfo(TextureFormat format, Protected isProtected) const {
+    return this->getDefaultTextureInfo(TextureUsage::kRead |
+                                       TextureUsage::kCopySrc |
+                                       TextureUsage::kCopyDst,
+                                       SkSpan(&format, 1),
+                                       SampleCount::k1,
+                                       Mipmapped::kNo,
+                                       isProtected,
+                                       Discardable::kNo);
+}
+
 TextureInfo Caps::getTextureInfoForSampledCopy(const TextureInfo& info, Mipmapped mipmapped) const {
     const TextureFormat format = TextureInfoPriv::ViewFormat(info);
     return this->getDefaultTextureInfo(kDefaultSampledUsage,
@@ -286,6 +333,11 @@ TextureInfo Caps::getTextureInfoForSampledCopy(const TextureInfo& info, Mipmappe
                                        mipmapped,
                                        info.isProtected(),
                                        Discardable::kNo);
+}
+
+TextureInfo Caps::getTextureInfoForReadableCopy(const TextureInfo& info) const {
+    return this->getDefaultReadableTextureInfo(TextureInfoPriv::ViewFormat(info),
+                                               info.isProtected());
 }
 
 TextureInfo Caps::getDefaultCompressedTextureInfo(SkTextureCompressionType compressionType,
@@ -314,38 +366,17 @@ TextureInfo Caps::getDefaultStorageTextureInfo(SkColorType colorType) const {
                                        Discardable::kNo);
 }
 
-bool Caps::areColorTypeAndTextureInfoCompatible(SkColorType ct, const TextureInfo& info) const {
-    // TODO: add SkTextureCompressionType handling
-    // (can be handled by setting up the colorTypeInfo instead?)
-
-    return SkToBool(this->getColorTypeInfo(ct, info));
-}
-
-const Caps::ColorTypeInfo* Caps::getColorTypeInfo(SkColorType ct, const TextureInfo& info) const {
-    if (!info.isValid()) {
-        return nullptr;
-    }
-
-    for (const ColorTypeInfo& colorInfo : this->getColorTypeInfos(info)) {
-        if (colorInfo.fColorType == ct) {
-            return &colorInfo;
-        }
-    }
-    return nullptr;
-}
-
-SkColorType Caps::getDefaultColorType(const TextureInfo& info) const {
-    if (!info.isValid()) {
-        return kUnknown_SkColorType;
-    }
-
-    const bool isRenderable = this->isRenderable(info);
-    for (const ColorTypeInfo& colorInfo : this->getColorTypeInfos(info)) {
-        if (!isRenderable || (colorInfo.fFlags & ColorTypeInfo::kRenderable_Flag)) {
-            return colorInfo.fColorType;
-        }
-    }
-    return kUnknown_SkColorType;
+TextureInfo Caps::getDefaultReadableStorageTextureInfo(TextureFormat format,
+                                                       Protected isProtected) const {
+    return this->getDefaultTextureInfo(TextureUsage::kStorage |
+                                       TextureUsage::kRead |
+                                       TextureUsage::kCopySrc |
+                                       TextureUsage::kCopyDst,
+                                       SkSpan(&format, 1),
+                                       SampleCount::k1,
+                                       Mipmapped::kNo,
+                                       isProtected,
+                                       Discardable::kNo);
 }
 
 SampleCount Caps::getCompatibleMSAASampleCount(const TextureInfo& info) const {
@@ -371,24 +402,6 @@ SampleCount Caps::getCompatibleMSAASampleCount(const TextureInfo& info) const {
     return SampleCount::k1;
 }
 
-std::pair<SkColorType, bool /*isRGBFormat*/> Caps::supportedTransferColorType(
-        SkColorType colorType,
-        const TextureInfo& textureInfo) const {
-    // NOTE: Compressed textures can't be read back, and external format textures can't be read or
-    // written to. However, this is not checked here. Instead that is expected to be handled by
-    // supports[Read|Write]Pixels().
-    const ColorTypeInfo* colorInfo = this->getColorTypeInfo(colorType, textureInfo);
-    if (colorInfo) {
-        const TextureFormat format = TextureInfoPriv::ViewFormat(textureInfo);
-        const bool rgbRequiresIntervention =
-                TextureFormatChannelMask(format) == kRGB_SkColorChannelFlags &&
-                colorInfo->fTransferColorType != kRGB_565_SkColorType;
-        return {colorInfo->fTransferColorType, rgbRequiresIntervention};
-    } else {
-        return {kUnknown_SkColorType, false};
-    }
-}
-
 DstReadStrategy Caps::getDstReadStrategy() const {
     // TODO(b/238757201; b/383769988): Dst reads are currently only supported by FB fetch and
     // texture copy.
@@ -407,9 +420,10 @@ sktext::gpu::SubRunControl Caps::getSubRunControl(bool useSDFTForSmallText) cons
             true, /*ableToUsePerspectiveSDFT*/
             this->minDistanceFieldFontSize(),
             this->glyphsAsPathsFontSize(),
-            true /*forcePathAA*/};
+            true, /*forcePathAA*/
+            this->supportBilerpFromGlyphAtlas()};
 #else
-    return sktext::gpu::SubRunControl{/*forcePathAA=*/true};
+    return sktext::gpu::SubRunControl{/*forcePathAA=*/true, this->supportBilerpFromGlyphAtlas()};
 #endif
 }
 

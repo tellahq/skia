@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -43,9 +43,6 @@ public:
 
     // deprecated
     virtual void add(std::function<void(void)>) = 0;
-
-    // Returns the number of discarded work units
-    virtual int discardAllPendingWork() { return 0; }
 
     // If it makes sense for this executor, use this thread to execute work for a little while.
     virtual void borrow() {}

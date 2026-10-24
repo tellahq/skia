@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -12,9 +12,11 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkTypes.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkMatrixPriv.h"
+#include "src/core/SkRandom.h"
 #include "tests/Test.h"
+
+#include <array>
 
 static bool eq(const SkM44& a, const SkM44& b, float tol) {
     float fa[16], fb[16];
@@ -279,10 +281,12 @@ DEF_TEST(M44_mapRect, reporter) {
             assertRectsNearlyEqual(actual, *expected, epsilon);
         }
 
-        SkV4 corners[4] = {{src.fLeft, src.fTop, 0.f, 1.f},
-                           {src.fRight, src.fTop, 0.f, 1.f},
-                           {src.fRight, src.fBottom, 0.f, 1.f},
-                           {src.fLeft, src.fBottom, 0.f, 1.f}};
+        std::array<SkV4, 4> corners = {{
+                {src.fLeft, src.fTop, 0.f, 1.f},
+                {src.fRight, src.fTop, 0.f, 1.f},
+                {src.fRight, src.fBottom, 0.f, 1.f},
+                {src.fLeft, src.fBottom, 0.f, 1.f},
+        }};
         bool leftFound = false;
         bool topFound = false;
         bool rightFound = false;

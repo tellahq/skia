@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -18,7 +18,7 @@
 #include "include/core/SkSpan.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypeface.h"
-#include "include/private/base/SkAPI.h"
+#include "include/private/SkAPI.h"
 #include "include/utils/SkTextUtils.h"
 #include "modules/skottie/include/TextShaper.h"
 
@@ -100,6 +100,8 @@ struct TextPropertyValue {
                             // Optional font family name, to be passed to the font manager for
                             // fallback.
     SkString                fFontFamily;
+                            // Extra spacing between glyphs (letter tracking), in 1/1000 em units.
+    float                   fTextTracking   = 0;
 
     bool operator==(const TextPropertyValue& other) const;
     bool operator!=(const TextPropertyValue& other) const;

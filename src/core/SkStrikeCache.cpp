@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -10,9 +10,10 @@
 #include "include/core/SkGraphics.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkTraceMemoryDump.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMutex.h"
+#include "include/private/SkAPI.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMutex.h"
 #include "src/core/SkDescriptor.h"
 #include "src/core/SkStrike.h"
 #include "src/core/SkStrikeSpec.h"
@@ -25,15 +26,24 @@ struct SkFontMetrics;
 
 using namespace sktext;
 
-bool gSkUseThreadLocalStrikeCaches_IAcknowledgeThisIsIncrediblyExperimental = false;
+#if defined(SK_ENABLE_THREADLOCAL_STRIKECACHE)
+SK_API bool gSkUseThreadLocalStrikeCaches_IAcknowledgeThisIsIncrediblyExperimental = true;
+#else
+SK_API bool gSkUseThreadLocalStrikeCaches_IAcknowledgeThisIsIncrediblyExperimental = false;
+#endif
 
 SkStrikeCache* SkStrikeCache::GlobalStrikeCache() {
+#if defined(SK_ENABLE_THREADLOCAL_STRIKECACHE)
+    static thread_local auto* cache = new SkStrikeCache;
+    return cache;
+#else
     if (gSkUseThreadLocalStrikeCaches_IAcknowledgeThisIsIncrediblyExperimental) {
         static thread_local auto* cache = new SkStrikeCache;
         return cache;
     }
     static auto* cache = new SkStrikeCache;
     return cache;
+#endif
 }
 
 auto SkStrikeCache::findOrCreateStrike(const SkStrikeSpec& strikeSpec) -> sk_sp<SkStrike> {

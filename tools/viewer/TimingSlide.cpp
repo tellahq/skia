@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,6 +11,7 @@
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/viewer/Slide.h"
 
+#include <array>
 #include <chrono>
 
 class TimingSlide : public Slide {
@@ -33,7 +34,7 @@ public:
 
         // Draw one pixel at a time with drawImageRect(),
         // timing how long each drawImageRect() call takes.
-        double cost[H][W];
+        std::array<std::array<double, W>, H> cost;
         double min = +INFINITY,
                max = -INFINITY;
         for (int y = 0; y < H; y++)

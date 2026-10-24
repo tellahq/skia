@@ -1,9 +1,9 @@
-// Copyright 2019 Google LLC.
+// Copyright 2019 Google LLC
 #include "modules/skparagraph/src/OneLineShaper.h"
 
 #include "modules/skparagraph/src/Iterators.h"
 #include "modules/skshaper/include/SkShaper_harfbuzz.h"
-#include "src/base/SkUTF.h"
+#include "src/core/SkUTF.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -710,10 +710,10 @@ bool OneLineShaper::shape() {
                         }
                     }
 
-                    shaper->shape(unresolvedText.data(), unresolvedText.size(),
-                            fontIter, bidiIter,*scriptIter, langIter,
-                            adjustedFeatures.data(), adjustedFeatures.size(),
-                            limitlessWidth, this);
+                    shaper->shape(unresolvedText,
+                                  fontIter, bidiIter,*scriptIter, langIter,
+                                  adjustedFeatures,
+                                  { .width = limitlessWidth }, this);
 
                     // Take off the queue the block we tried to resolved -
                     // whatever happened, we have now smaller pieces of it to deal with

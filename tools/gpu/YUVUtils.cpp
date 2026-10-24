@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -31,9 +31,11 @@
 #ifdef SK_GRAPHITE
 #include "include/gpu/graphite/Image.h"
 #include "include/gpu/graphite/YUVABackendTextures.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "src/core/SkAutoPixmapStorage.h"
 #endif
+
+#include <array>
 
 namespace {
 
@@ -101,7 +103,7 @@ protected:
                     xy1.fX *= normX;
                     xy1.fY *= normY;
 
-                    uint8_t yuva[4] = {0, 0, 0, 255};
+                    std::array<uint8_t, 4> yuva = {0, 0, 0, 255};
 
                     for (auto c : {SkYUVAInfo::YUVAChannels::kY,
                                    SkYUVAInfo::YUVAChannels::kU,
@@ -116,7 +118,7 @@ protected:
                     }
 
                     // Making premul here.
-                    *fFlattened.getAddr32(x, y) = convert_yuva_to_rgba(mtx, yuva);
+                    *fFlattened.getAddr32(x, y) = convert_yuva_to_rgba(mtx, yuva.data());
                 }
             }
         }
@@ -335,7 +337,7 @@ bool LazyYUVImage::ensureYUVImage(GrRecordingContext* rContext, Type type) {
                 return false;
             }
             if (auto direct = rContext->asDirectContext()) {
-                sk_sp<sk_gpu_test::ManagedBackendTexture> mbets[SkYUVAInfo::kMaxPlanes];
+                std::array<sk_sp<sk_gpu_test::ManagedBackendTexture>, SkYUVAInfo::kMaxPlanes> mbets;
                 GrBackendTexture textures[SkYUVAInfo::kMaxPlanes];
                 for (int i = 0; i < fPixmaps.numPlanes(); ++i) {
                     mbets[i] = sk_gpu_test::ManagedBackendTexture::MakeFromPixmap(
@@ -357,7 +359,7 @@ bool LazyYUVImage::ensureYUVImage(GrRecordingContext* rContext, Type type) {
                     return false;
                 }
                 void* planeRelContext =
-                        sk_gpu_test::ManagedBackendTexture::MakeYUVAReleaseContext(mbets);
+                        sk_gpu_test::ManagedBackendTexture::MakeYUVAReleaseContext(mbets.data());
                 fYUVImage[idx] = SkImages::TextureFromYUVATextures(
                         direct,
                         yuvaTextures,
@@ -493,10 +495,14 @@ bool LazyYUVImage::ensureYUVImage(Recorder* recorder, Type type) {
                         return false;
                     }
                 }
+                // Many YUV[A] planar configs may not have an alpha channel in a plane's texture,
+                // in which case kOpaque could be used; but always use kUnpremul since the logical
+                // combined YUV[A] sample is always unpremul before being converted to RGBA.
+                // Don't use kUnknown since a plane may include the real alpha channel and
+                // kUnknown would be interpreted as "force-opaque".
                 planeImgs[i] = SkImages::WrapTexture(recorder,
                                                      mbet->texture(),
-                                                     plane.colorType(),
-                                                     plane.alphaType(),
+                                                     kUnpremul_SkAlphaType,
                                                      fColorSpace,
                                                      skgpu::Origin::kTopLeft,
                                                      genMipmaps,

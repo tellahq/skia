@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Google Inc.
+ * Copyright 2021 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -8,8 +8,8 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSpan.h"
 #include "include/core/SkString.h"
-#include "include/private/base/SkTArray.h"
-#include "src/base/SkTInternalLList.h"
+#include "include/private/SkTArray.h"
+#include "src/core/SkTInternalLList.h"
 #include "src/gpu/ganesh/GrRenderTask.h"
 #include "src/gpu/ganesh/GrRenderTaskCluster.h"
 #include "src/gpu/ganesh/GrSurfaceProxy.h"
@@ -134,12 +134,12 @@ static void create_graph3(TArray<sk_sp<GrMockRenderTask>>* graph,
 }
 
 DEF_TEST(GrRenderTaskCluster, reporter) {
-    CreateGraphPF tests[] = {
-        create_graph0,
-        create_graph1,
-        create_graph2,
-        create_graph3
-    };
+    auto tests = std::to_array<CreateGraphPF>({
+            create_graph0,
+            create_graph1,
+            create_graph2,
+            create_graph3,
+    });
 
     for (size_t i = 0; i < std::size(tests); ++i) {
         TArray<sk_sp<GrMockRenderTask>> graph;

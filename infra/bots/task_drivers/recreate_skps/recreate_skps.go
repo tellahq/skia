@@ -1,4 +1,4 @@
-// Copyright 2021 Google Inc.
+// Copyright 2021 Google LLC
 //
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
@@ -195,7 +195,10 @@ func main() {
 			return skerr.Wrap(err)
 		}
 		depotToolsDir = co.Dir()
-		return err
+		if _, err := exec.RunCwd(ctx, depotToolsDir, filepath.Join(depotToolsDir, "ensure_bootstrap")); err != nil {
+			return skerr.Wrap(err)
+		}
+		return nil
 	}); err != nil {
 		td.Fatal(ctx, err)
 	}

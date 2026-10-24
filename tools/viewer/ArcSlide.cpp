@@ -20,11 +20,13 @@
 #include "include/effects/SkGradient.h"
 #include "include/utils/SkParsePath.h"
 #include "include/utils/SkTextUtils.h"
-#include "src/base/SkRandom.h"
-#include "src/base/SkUTF.h"
 #include "src/core/SkColorPriv.h"
+#include "src/core/SkRandom.h"
+#include "src/core/SkUTF.h"
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 class ArcsSlide : public Slide {
     class MyDrawable : public SkDrawable {
@@ -106,17 +108,17 @@ class ArcsSlide : public Slide {
 
         paint.setStrokeWidth(SkIntToScalar(1));
 
-        static const SkScalar gAngles[] = {
-            0, 360,
-            0, 45,
-            0, -45,
-            720, 135,
-            -90, 269,
-            -90, 270,
-            -90, 271,
-            -180, -270,
-            225, 90
-        };
+        static const auto gAngles = std::to_array<SkScalar>({
+                0, 360,
+                0, 45,
+                0, -45,
+                720, 135,
+                -90, 269,
+                -90, 270,
+                -90, 271,
+                -180, -270,
+                225, 90,
+        });
 
         for (size_t i = 0; i < std::size(gAngles); i += 2) {
             paint.setColor(SK_ColorBLACK);

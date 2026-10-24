@@ -38,21 +38,21 @@
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/gpu/ganesh/GrTypes.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkFixed.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkMath.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkFixed.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkMath.h"
+#include "include/private/SkTemplates.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkFloatBits.h"
-#include "src/base/SkSafeMath.h"
 #include "src/core/SkBlurMaskFilterImpl.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkDraw.h"
+#include "src/core/SkFloatBits.h"
 #include "src/core/SkMask.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkRRectPriv.h"
 #include "src/core/SkRuntimeEffectPriv.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/gpu/BlurUtils.h"
 #include "src/gpu/ResourceKey.h"
@@ -85,6 +85,7 @@
 #include "src/gpu/ganesh/effects/GrSkSLFP.h"
 #include "src/gpu/ganesh/effects/GrTextureEffect.h"
 #include "src/gpu/ganesh/geometry/GrStyledShape.h"
+#include "src/gpu/ganesh/image/GrMippedBitmap.h"
 
 #include <algorithm>
 #include <array>
@@ -221,15 +222,18 @@ static GrSurfaceProxyView sw_create_filtered_mask(GrRecordingContext* rContext,
 
         // we now have a device-aligned 8bit mask in dstM, ready to be drawn using
         // the current clip (and identity matrix) and GrPaint settings
-        SkBitmap bm;
-        if (!bm.installPixels(SkImageInfo::MakeA8(dstM.fBounds.width(), dstM.fBounds.height()),
-                              autoDst.release(), dstM.fRowBytes, mask_release_proc, nullptr)) {
+        std::optional<GrMippedBitmap> bm = GrMippedBitmap::Make(
+                SkImageInfo::MakeA8(dstM.fBounds.width(), dstM.fBounds.height()),
+                autoDst.release(),
+                dstM.fRowBytes,
+                mask_release_proc,
+                nullptr);
+        if (!bm) {
             return {};
         }
-        bm.setImmutable();
 
         std::tie(filteredMaskView, std::ignore) = GrMakeUncachedBitmapProxyView(
-                rContext, bm, skgpu::Mipmapped::kNo, SkBackingFit::kApprox);
+                rContext, bm.value(), skgpu::Mipmapped::kNo, SkBackingFit::kApprox);
         if (!filteredMaskView) {
             return {};
         }
@@ -383,7 +387,7 @@ static bool can_filter_mask(const SkMaskFilterBase* maskFilter,
         return false;
     }
     auto bmf = static_cast<const SkBlurMaskFilterImpl*>(maskFilter);
-    SkScalar xformedSigma = bmf->computeXformedSigma(ctm);
+    SkScalar xformedSigma = bmf->computeXformedDeviceSigma(ctm);
     if (skgpu::BlurIsEffectivelyIdentity(xformedSigma)) {
         *maskRect = devSpaceShapeBounds;
         return maskRect->intersect(clipBounds);
@@ -487,7 +491,7 @@ static std::unique_ptr<GrFragmentProcessor> create_profile_effect(GrRecordingCon
         bm = skgpu::CreateCircleProfile(sigma * scale, circleR * scale, kProfileTextureWidth);
     }
 
-    profileView = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, bm));
+    profileView = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, GrMippedBitmap(bm)));
     if (!profileView) {
         return nullptr;
     }
@@ -561,12 +565,12 @@ static std::unique_ptr<GrFragmentProcessor> make_rect_integral_fp(GrRecordingCon
                 std::move(view), kPremul_SkAlphaType, m, GrSamplerState::Filter::kLinear);
     }
 
-    SkBitmap bitmap = skgpu::CreateIntegralTable(width);
-    if (bitmap.empty()) {
+    SkBitmap bm = skgpu::CreateIntegralTable(width);
+    if (bm.empty()) {
         return {};
     }
 
-    view = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, bitmap));
+    view = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, GrMippedBitmap(bm)));
     if (!view) {
         return {};
     }
@@ -817,7 +821,7 @@ static GrSurfaceProxyView create_mask_on_cpu(GrRecordingContext* rContext,
         return {};
     }
 
-    auto view = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, result));
+    auto view = std::get<0>(GrMakeUncachedBitmapProxyView(rContext, GrMippedBitmap(result)));
     if (!view) {
         return {};
     }
@@ -1038,7 +1042,7 @@ static bool direct_filter_mask(GrRecordingContext* context,
         return false;
     }
 
-    SkScalar xformedSigma = bmf->computeXformedSigma(viewMatrix);
+    SkScalar xformedSigma = bmf->computeXformedDeviceSigma(viewMatrix);
     if (skgpu::BlurIsEffectivelyIdentity(xformedSigma)) {
         sdc->drawShape(clip, std::move(paint), GrAA::kYes, viewMatrix, GrStyledShape(shape));
         return true;
@@ -1249,7 +1253,7 @@ static GrSurfaceProxyView filter_mask(GrRecordingContext* context,
     // 'maskRect' isn't snapped to the UL corner but the mask in 'src' is.
     const SkIRect clipRect = SkIRect::MakeWH(maskRect.width(), maskRect.height());
 
-    SkScalar xformedSigma = bmf->computeXformedSigma(ctm);
+    SkScalar xformedSigma = bmf->computeXformedDeviceSigma(ctm);
 
     // If we're doing a normal blur, we can clobber the pathTexture in the
     // gaussianBlur.  Otherwise, we need to save it for later compositing.

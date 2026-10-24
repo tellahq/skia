@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -100,7 +100,8 @@ static void run_test(GrDirectContext* dContext, skiatest::Reporter* reporter) {
 
         sdc->drawPath(nullptr, std::move(paint), GrAA::kNo, SkMatrix::I(), invPath, style);
 
-        dContext->priv().flushSurface(sdc->asSurfaceProxy());
+        GrDirectContext::FlushResult result = dContext->priv().flushSurface(sdc->asSurfaceProxy());
+        REPORTER_ASSERT(reporter, result.fSuccess);
     }
 
     {

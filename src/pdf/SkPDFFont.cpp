@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include <array>
 #include "src/pdf/SkPDFFont.h"
 
 #include "include/codec/SkCodec.h"
@@ -37,11 +38,11 @@
 #include "include/core/SkTypeface.h"
 #include "include/docs/SkPDFDocument.h"
 #include "include/effects/SkDashPathEffect.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkBitmaskEnum.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
+#include "src/core/SkBitmaskEnum.h"
 #include "src/core/SkDescriptor.h"
 #include "src/core/SkDevice.h"
 #include "src/core/SkGlyph.h"
@@ -156,7 +157,10 @@ sk_sp<SkPDFStrike> SkPDFStrike::Make(SkPDFDocument* doc, const SkFont& font, con
 #endif
 
     SkScalar unitsPerEm = static_cast<SkScalar>(font.getTypeface()->getUnitsPerEm());
-    SkASSERT(0 < unitsPerEm);
+    int glyphCount = font.getTypeface()->countGlyphs();
+    if (unitsPerEm <= 0 || glyphCount <= 0) {
+        return nullptr;
+    }
 
     SkFont canonFont(font);
     canonFont.setBaselineSnap(false);  // canonicalize
@@ -651,7 +655,7 @@ static SkPDFIndirectReference type3_descriptor(SkPDFDocument* doc,
     }
 
     /** PDF32000_2008: FontStretch should be used for Type3 fonts in Tagged PDF documents. */
-    static constexpr const char* stretchNames[9] = {
+    static constexpr std::array<const char *, 9> stretchNames = {
         "UltraCondensed",
         "ExtraCondensed",
         "Condensed",
@@ -767,7 +771,7 @@ static void emit_subset_type3(const SkPDFFont& pdfFont, SkPDFDocument* doc) {
             canvas.translate(-glyphBBox.fLeft, -glyphBBox.fTop);
             canvas.drawDrawable(drawable);
             SkPDFIndirectReference xobject = SkPDFMakeFormXObject(
-                    doc, glyphDevice->content(),
+                    doc, glyphDevice->content(), SkPDFParentTreeKey(),
                     SkPDFMakeArray(0, 0, glyphBBox.width(), glyphBBox.height()),
                     glyphDevice->makeResourceDict(),
                     SkMatrix::Translate(glyphBBox.fLeft, glyphBBox.fTop), nullptr);
@@ -780,8 +784,11 @@ static void emit_subset_type3(const SkPDFFont& pdfFont, SkPDFDocument* doc) {
             setGlyphWidthAndBoundingBox(pathGlyph->advanceX(), glyphBBox, &content);
             SkPaint::Style style = pathGlyph->pathIsHairline() ? SkPaint::kStroke_Style
                                                                : SkPaint::kFill_Style;
-            using SkPDFUtils::EmptyPath, SkPDFUtils::EmptyVerb;
-            if (SkPDFUtils::EmitPath(*path, style, EmptyPath::Discard, EmptyVerb::Discard,
+
+            using SkPDFUtils::EmptyPath, SkPDFUtils::EmptyVerb, SkPDFUtils::EmptyArea;
+            const EmptyArea emptyArea = style == SkPaint::kFill_Style ? EmptyArea::Discard
+                                                                      : EmptyArea::Preserve;
+            if (SkPDFUtils::EmitPath(*path, EmptyPath::Discard, EmptyVerb::Discard, emptyArea,
                                      &content))
             {
                 SkPDFUtils::PaintPath(style, path->getFillType(), &content);
@@ -853,7 +860,7 @@ static void emit_subset_type3(const SkPDFFont& pdfFont, SkPDFDocument* doc) {
                 SkCanvas canvas(glyphDevice);
                 canvas.drawImage(pimg.fImage, 0, 0);
                 SkPDFIndirectReference sMask = SkPDFMakeFormXObject(
-                        doc, glyphDevice->content(),
+                        doc, glyphDevice->content(), SkPDFParentTreeKey(),
                         SkPDFMakeArray(0, 0, pimg.fImage->width(), pimg.fImage->height()),
                         glyphDevice->makeResourceDict(),
                         SkMatrix(), "DeviceGray");

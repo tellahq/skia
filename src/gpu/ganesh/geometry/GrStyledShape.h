@@ -14,8 +14,8 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkPathEnums.h"
 #include "src/core/SkPathPriv.h"
 #include "src/gpu/ganesh/GrStyle.h"
@@ -252,11 +252,11 @@ public:
 
     /**
      * Gets the size of the key for the shape represented by this GrStyledShape (ignoring its
-     * styling). A negative value is returned if the shape has no key (shouldn't be cached).
+     * styling). A zero value is returned if the shape has no key (shouldn't be cached).
      */
-    int unstyledKeySize() const;
+    uint16_t unstyledKeySize() const;
 
-    bool hasUnstyledKey() const { return this->unstyledKeySize() >= 0; }
+    bool hasUnstyledKey() const { return this->unstyledKeySize() > 0; }
 
     /**
      * Writes unstyledKeySize() bytes into the provided pointer. Assumes that there is enough
@@ -277,7 +277,7 @@ public:
      * the generation ID of the *original* path. This is the path that will receive
      * GenIDChangeListeners added to this shape.
      */
-    uint32_t testingOnly_getOriginalGenerationID() const;
+    uint64_t testingOnly_getOriginalGenerationID() const;
     bool testingOnly_isPath() const;
     bool testingOnly_isNonVolatilePath() const;
 
@@ -310,7 +310,7 @@ private:
     GrShape fShape;
     GrStyle fStyle;
     // Gen ID of the original path (path may be modified or simplified away).
-    int32_t fGenID      = 0;
+    uint64_t fGenID     = 0;
     bool    fClosed     = false;
     bool    fSimplified = false;
 

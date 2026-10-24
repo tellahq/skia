@@ -5,8 +5,8 @@
  * found in the LICENSE file.
  */
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTDArray.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTDArray.h"
 #include "src/pathops/SkIntersections.h"
 #include "src/pathops/SkPathOpsCubic.h"
 #include "src/pathops/SkPathOpsLine.h"
@@ -36,13 +36,14 @@ static const Curve testSet1[] = {  // extracted from cubicOp85i
     {1, {{{5,1}, {3,4}}} },
 };
 
-static const struct TestSet {
+struct TestSet {
     const Curve* tests;
     int testCount;
-} testSets[] = {
-    { testSet0, (int) std::size(testSet0) },
-    { testSet1, (int) std::size(testSet1) },
 };
+static const auto testSets = std::to_array<TestSet>({
+        TestSet{testSet0, (int)std::size(testSet0)},
+        TestSet{testSet1, (int)std::size(testSet1)},
+});
 
 static const int testSetsCount = (int) std::size(testSets);
 

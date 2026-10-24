@@ -24,6 +24,7 @@ tests_sources = [
   "$_tests/BitmapTest.cpp",
   "$_tests/BlitMaskClip.cpp",
   "$_tests/BlurTest.cpp",
+  "$_tests/CPUBackendTest.cpp",
   "$_tests/CPUContextRecorderTest.cpp",
   "$_tests/CachedDataTest.cpp",
   "$_tests/CachedDecodingPixelRefTest.cpp",
@@ -31,6 +32,7 @@ tests_sources = [
   "$_tests/CanvasStateHelpers.h",
   "$_tests/CanvasStateTest.cpp",
   "$_tests/CanvasTest.cpp",
+  "$_tests/CappedHairlinesTest.cpp",
   "$_tests/CharToGlyphCache.cpp",
   "$_tests/ChecksumTest.cpp",
   "$_tests/ClipCubicTest.cpp",
@@ -47,6 +49,7 @@ tests_sources = [
   "$_tests/ColorPrivTest.cpp",
   "$_tests/ColorSpaceTest.cpp",
   "$_tests/ColorTest.cpp",
+  "$_tests/ConvertPixelsTest.cpp",
   "$_tests/CoreBlittersTest.cpp",
   "$_tests/CubicChopTest.cpp",
   "$_tests/CubicMapTest.cpp",
@@ -58,6 +61,7 @@ tests_sources = [
   "$_tests/DequeTest.cpp",
   "$_tests/DescriptorTest.cpp",
   "$_tests/DeviceTest.cpp",
+  "$_tests/DirectMaskLimitTest.cpp",
   "$_tests/DiscardableMemoryPoolTest.cpp",
   "$_tests/DiscardableMemoryTest.cpp",
   "$_tests/DrawBitmapRectTest.cpp",
@@ -118,6 +122,7 @@ tests_sources = [
   "$_tests/InvalidIndexedPngTest.cpp",
   "$_tests/IsClosedSingleContourTest.cpp",
   "$_tests/JSONTest.cpp",
+  "$_tests/JpegxlTest.cpp",
   "$_tests/LListTest.cpp",
   "$_tests/LRUCacheTest.cpp",
   "$_tests/M44Test.cpp",
@@ -166,6 +171,7 @@ tests_sources = [
   "$_tests/PictureShaderTest.cpp",
   "$_tests/PictureTest.cpp",
   "$_tests/PixelRefTest.cpp",
+  "$_tests/PixelsRecTest.cpp",
   "$_tests/Point3Test.cpp",
   "$_tests/PointTest.cpp",
   "$_tests/PolyUtilsTest.cpp",
@@ -179,6 +185,7 @@ tests_sources = [
   "$_tests/RandomTest.cpp",
   "$_tests/RasterPipelineBuilderTest.cpp",
   "$_tests/RasterPipelineCodeGeneratorTest.cpp",
+  "$_tests/RawPtrTest.cpp",
   "$_tests/ReadPixelsTest.cpp",
   "$_tests/RecordDrawTest.cpp",
   "$_tests/RecordOptsTest.cpp",
@@ -323,7 +330,11 @@ graphite_tests_sources = [
   "$_tests/graphite/RecordingSurfacesTest.cpp",
   "$_tests/graphite/RectTest.cpp",
   "$_tests/graphite/ShapeTest.cpp",
-  "$_tests/graphite/TextureFormatTest.h",
+  "$_tests/graphite/StorageContextTest.cpp",
+  "$_tests/graphite/SubmitWithFinishProcTest.cpp",
+  "$_tests/graphite/SwizzleTest.cpp",
+  "$_tests/graphite/TextureFallbackTest.cpp",
+  "$_tests/graphite/TextureFormatTest.cpp",
   "$_tests/graphite/TextureProxyTest.cpp",
   "$_tests/graphite/TransformTest.cpp",
   "$_tests/graphite/UniformManagerTest.cpp",
@@ -331,6 +342,7 @@ graphite_tests_sources = [
   "$_tests/graphite/UpdateBackendTextureTest.cpp",
   "$_tests/graphite/UploadBufferManagerTest.cpp",
   "$_tests/graphite/VerticesPaddingTest.cpp",
+  "$_tests/graphite/crbug_513836996.cpp",
 ]
 
 precompile_tests_sources = [
@@ -346,6 +358,8 @@ precompile_tests_sources = [
   "$_tests/graphite/precompile/PaintParamsKeyTest.cpp",
   "$_tests/graphite/precompile/PaintParamsTestUtils.cpp",
   "$_tests/graphite/precompile/PaintParamsTestUtils.h",
+  "$_tests/graphite/precompile/PipelineManagerEarlyExit.cpp",
+  "$_tests/graphite/precompile/PipelineManagerThreaded.cpp",
   "$_tests/graphite/precompile/PrecompileStatsTest.cpp",
   "$_tests/graphite/precompile/PrecompileTestUtils.cpp",
   "$_tests/graphite/precompile/PrecompileTestUtils.h",
@@ -353,16 +367,29 @@ precompile_tests_sources = [
   "$_tests/graphite/precompile/UserdefinedStableKeyTest.cpp",
 ]
 
-graphite_dawn_tests_sources = [
-  "$_tests/graphite/DawnBackendTextureTest.cpp",
-  "$_tests/graphite/TextureFormatTest_dawn.cpp",
+sparse_strips_test_sources = [
+  "$_tests/graphite/sparse_strips/AtlasTests.cpp",
+  "$_tests/graphite/sparse_strips/ClipTest.cpp",
+  "$_tests/graphite/sparse_strips/CoverageTest.cpp",
+  "$_tests/graphite/sparse_strips/CoverageTestUtils.h",
+  "$_tests/graphite/sparse_strips/FlattenTest.cpp",
+  "$_tests/graphite/sparse_strips/LUTTest.cpp",
+  "$_tests/graphite/sparse_strips/Oracle.cpp",
+  "$_tests/graphite/sparse_strips/Oracle.h",
+  "$_tests/graphite/sparse_strips/OracleTest.cpp",
+  "$_tests/graphite/sparse_strips/OracleValidator.cpp",
+  "$_tests/graphite/sparse_strips/OracleValidator.h",
+  "$_tests/graphite/sparse_strips/PolylineTest.cpp",
+  "$_tests/graphite/sparse_strips/SkpValidator.cpp",
+  "$_tests/graphite/sparse_strips/SkpValidator.h",
+  "$_tests/graphite/sparse_strips/TileTestCases.cpp",
+  "$_tests/graphite/sparse_strips/TileTestCases.h",
+  "$_tests/graphite/sparse_strips/TilerTest.cpp",
 ]
-graphite_metal_tests_sources = [
-  "$_tests/graphite/MtlBackendTextureTest.mm",
-  "$_tests/graphite/TextureFormatTest_mtl.mm",
-]
+
+graphite_dawn_tests_sources = [ "$_tests/graphite/DawnBackendTextureTest.cpp" ]
+graphite_metal_tests_sources = [ "$_tests/graphite/MtlBackendTextureTest.cc" ]
 graphite_vulkan_tests_sources = [
-  "$_tests/graphite/TextureFormatTest_vk.cpp",
   "$_tests/graphite/VulkanBackendTextureTest.cpp",
   "$_tests/graphite/VulkanDstReadRenderpassReuseTest.cpp",
 ]
@@ -476,6 +503,7 @@ ganesh_tests_sources = [
   "$_tests/GrTextBlobTest.cpp",
   "$_tests/GrTextureMipMapInvalidationTest.cpp",
   "$_tests/GrThreadSafeCacheTest.cpp",
+  "$_tests/GrUniqueProxyTest.cpp",
   "$_tests/LazyProxyTest.cpp",
   "$_tests/LazyStencilAttachmentTest.cpp",
   "$_tests/MatrixColorFilterTest.cpp",
@@ -499,7 +527,9 @@ ganesh_tests_sources = [
   "$_tests/Skbug12214.cpp",
   "$_tests/Skbug6653.cpp",
   "$_tests/SlugTest.cpp",
+  "$_tests/SmallPathRendererTest.cpp",
   "$_tests/SrcSrcOverBatchTest.cpp",
+  "$_tests/StencilClearTest.cpp",
   "$_tests/SurfaceDrawContextTest.cpp",
   "$_tests/SurfaceSemaphoreTest.cpp",
   "$_tests/TextBlobCacheTest.cpp",
@@ -511,6 +541,7 @@ ganesh_tests_sources = [
   "$_tests/VkBackendSurfaceTest.cpp",
   "$_tests/VkWrapTests.cpp",
   "$_tests/WrappedSurfaceCopyOnWriteTest.cpp",
+  "$_tests/crbug_500172224.cpp",
 ]
 
 ganesh_gl_tests_sources = [
@@ -521,8 +552,8 @@ ganesh_gl_tests_sources = [
 ]
 
 ganesh_metal_tests_sources = [
-  "$_tests/MtlBackendAllocationTest.mm",
-  "$_tests/MtlCopySurfaceTest.mm",
+  "$_tests/MtlBackendAllocationTest.cc",
+  "$_tests/MtlCopySurfaceTest.cc",
 ]
 
 jpeg_gainmap_tests_sources = [

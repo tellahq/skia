@@ -19,11 +19,11 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMutex.h"
-#include "include/private/base/SkTDArray.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkMutex.h"
+#include "include/private/SkTDArray.h"
 #include "include/utils/SkParsePath.h"
-#include "src/base/SkFloatBits.h"
+#include "src/core/SkFloatBits.h"
 #include "src/core/SkPathPriv.h"
 #include "src/pathops/SkPathOpsCommon.h"
 #include "src/pathops/SkPathOpsDebug.h"
@@ -33,6 +33,7 @@
 #include "tests/Test.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -64,21 +65,21 @@ static const char marker[] =
     "\n"
     "var testDivs = [\n";
 
-static const char* opStrs[] = {
-    "kDifference_SkPathOp",
-    "kIntersect_SkPathOp",
-    "kUnion_SkPathOp",
-    "kXOR_PathOp",
-    "kReverseDifference_SkPathOp",
-};
+static constexpr auto opStrs = std::to_array<const char*>({
+        "kDifference_SkPathOp",
+        "kIntersect_SkPathOp",
+        "kUnion_SkPathOp",
+        "kXOR_PathOp",
+        "kReverseDifference_SkPathOp",
+});
 
-static const char* opSuffixes[] = {
-    "d",
-    "i",
-    "u",
-    "o",
-    "r",
-};
+static constexpr auto opSuffixes = std::to_array<const char*>({
+        "d",
+        "i",
+        "u",
+        "o",
+        "r",
+});
 
 enum class ExpectSuccess {
     kNo,
@@ -294,9 +295,7 @@ static int comparePaths(skiatest::Reporter* reporter, const char* testName, cons
     if (ExpectMatch::kYes == expectMatch && errors2x2 >= MAX_ERRORS) {
         SkAutoMutexExclusive autoM(compareDebugOut3);
         showPathOpPath(testName, one, two, a, b, scaledOne, scaledTwo, shapeOp, scale);
-        SkDebugf("\n/*");
-        REPORTER_ASSERT(reporter, 0);
-        SkDebugf(" */\n");
+        ERRORF(reporter, "PathOp mismatch for %s", testName);
     }
     return errors2x2 >= MAX_ERRORS ? errors2x2 : 0;
 }
@@ -410,20 +409,20 @@ static void json_status(ExpectSuccess expectSuccess, ExpectMatch expectMatch, bo
 
 static void json_path_out(const SkPath& path, const char* pathName, const char* fillTypeName,
         bool lastField) {
-    char const * const gFillTypeStrs[] = {
-        "Winding",
-        "EvenOdd",
-        "InverseWinding",
-        "InverseEvenOdd",
-    };
+    static constexpr auto gFillTypeStrs = std::to_array<const char*>({
+            "Winding",
+            "EvenOdd",
+            "InverseWinding",
+            "InverseEvenOdd",
+    });
     if (PathOpsDebug::gOutputSVG) {
         SkString svg = SkParsePath::ToSVGString(path);
         fprintf(PathOpsDebug::gOut, "  \"%s\": \"%s\",\n", pathName, svg.c_str());
     } else {
-                                 // MOVE, LINE, QUAD, CONIC, CUBIC, CLOSE
-        const int verbConst[] =  {     0,    1,    2,     3,     4,     5 };
-        const int pointIndex[] = {     0,    1,    1,     1,     1,     0 };
-        const int pointCount[] = {     1,    2,    3,     3,     4,     0 };
+        //                                                MOVE, LINE, QUAD, CONIC, CUBIC, CLOSE
+        static constexpr auto verbConst  = std::to_array({   0,    1,    2,     3,     4,     5});
+        static constexpr auto pointIndex = std::to_array({   0,    1,    1,     1,     1,     0});
+        static constexpr auto pointCount = std::to_array({   1,    2,    3,     3,     4,     0});
         fprintf(PathOpsDebug::gOut, "  \"%s\": [", pathName);
         bool first = true;
         for (auto [verb, points, w] : SkPathPriv::Iterate(path)) {
@@ -432,11 +431,13 @@ static void json_path_out(const SkPath& path, const char* pathName, const char* 
             } else {
                 fprintf(PathOpsDebug::gOut, ",\n    ");
             }
-            int verbIndex = (int) verb;
+            int verbIndex = (int)verb;
             fprintf(PathOpsDebug::gOut, "[%d", verbConst[verbIndex]);
             for (int i = pointIndex[verbIndex]; i < pointCount[verbIndex]; ++i) {
-                fprintf(PathOpsDebug::gOut, ", \"0x%08x\", \"0x%08x\"",
-                        SkFloat2Bits(points[i].fX), SkFloat2Bits(points[i].fY));
+                fprintf(PathOpsDebug::gOut,
+                        ", \"0x%08x\", \"0x%08x\"",
+                        SkFloat2Bits(points[i].fX),
+                        SkFloat2Bits(points[i].fY));
             }
             if (SkPathVerb::kConic == verb) {
                 fprintf(PathOpsDebug::gOut, ", \"0x%08x\"", SkFloat2Bits(*w));
@@ -478,8 +479,7 @@ static bool inner_simplify(skiatest::Reporter* reporter, const SkPath& path, con
                              SkDEBUGPARAMS(sTestName));
     if (!out.has_value()) {
         if (ExpectSuccess::kYes == expectSuccess) {
-            SkDebugf("%s did not expect %s failure\n", __FUNCTION__, filename);
-            REPORTER_ASSERT(reporter, 0);
+            ERRORF(reporter, "Simplify failed for %s", filename);
         }
         if (PathOpsDebug::gJson) {
             json_status(expectSuccess, expectMatch, false);
@@ -488,8 +488,7 @@ static bool inner_simplify(skiatest::Reporter* reporter, const SkPath& path, con
         return false;
     } else {
         if (ExpectSuccess::kNo == expectSuccess) {
-            SkDebugf("%s %s unexpected success\n", __FUNCTION__, filename);
-            REPORTER_ASSERT(reporter, 0);
+            ERRORF(reporter, "Simplify unexpected success for %s", filename);
         }
         if (PathOpsDebug::gJson) {
             json_status(expectSuccess, expectMatch, true);
@@ -500,12 +499,11 @@ static bool inner_simplify(skiatest::Reporter* reporter, const SkPath& path, con
     int errors = comparePaths(reporter, filename, path, *out, bitmap);
     if (ExpectMatch::kNo == expectMatch) {
         if (!errors) {
-            SkDebugf("%s failing test %s now succeeds\n", __FUNCTION__, filename);
-            REPORTER_ASSERT(reporter, 0);
+            ERRORF(reporter, "Failing Simplify test %s now succeeds", filename);
             return false;
         }
     } else if (ExpectMatch::kYes == expectMatch && errors) {
-        REPORTER_ASSERT(reporter, 0);
+        ERRORF(reporter, "Simplify mismatch for %s", filename);
     }
     reporter->bumpTestCount();
     return errors == 0;
@@ -553,8 +551,7 @@ static bool innerPathOp(skiatest::Reporter* reporter, const SkPath& a, const SkP
                        SkDEBUGPARAMS(testName));
     if (!out.has_value()) {
         if (ExpectSuccess::kYes == expectSuccess) {
-            SkDebugf("%s %s did not expect failure\n", __FUNCTION__, testName);
-            REPORTER_ASSERT(reporter, 0);
+            ERRORF(reporter, "PathOp failed for %s", testName);
         }
         if (PathOpsDebug::gJson) {
             json_status(expectSuccess, expectMatch, false);
@@ -563,8 +560,7 @@ static bool innerPathOp(skiatest::Reporter* reporter, const SkPath& a, const SkP
         return false;
     } else {
         if (ExpectSuccess::kNo == expectSuccess) {
-                SkDebugf("%s %s unexpected success\n", __FUNCTION__, testName);
-                REPORTER_ASSERT(reporter, 0);
+            ERRORF(reporter, "PathOp unexpected success for %s", testName);
         }
         if (PathOpsDebug::gJson) {
             json_status(expectSuccess, expectMatch, true);

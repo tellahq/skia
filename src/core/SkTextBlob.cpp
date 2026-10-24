@@ -15,20 +15,21 @@
 #include "include/core/SkPoint.h"
 #include "include/core/SkRSXform.h"
 #include "include/core/SkSpan.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkSafeMath.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkFloatingPoint.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkFontPriv.h"
 #include "src/core/SkGlyph.h"
 #include "src/core/SkReadBuffer.h"
+#include "src/core/SkSafeMath.h"
 #include "src/core/SkStrikeSpec.h"
 #include "src/core/SkTextBlobPriv.h"
 #include "src/core/SkWriteBuffer.h"
 #include "src/text/GlyphRun.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <limits>
 #include <new>
@@ -196,12 +197,12 @@ enum SkTextBlob::GlyphPositioning : uint8_t {
 };
 
 unsigned SkTextBlob::ScalarsPerGlyph(GlyphPositioning pos) {
-    const uint8_t gScalarsPerPositioning[] = {
+    static constexpr auto gScalarsPerPositioning = std::to_array<uint8_t>({
         0,  // kDefault_Positioning
         1,  // kHorizontal_Positioning
         2,  // kFull_Positioning
         4,  // kRSXform_Positioning
-    };
+    });
     SkASSERT((unsigned)pos <= 3);
     return gScalarsPerPositioning[pos];
 }
@@ -777,6 +778,12 @@ sk_sp<SkTextBlob> SkTextBlobPriv::MakeFromBuffer(SkReadBuffer& reader) {
             if (!reader.readByteArray(buf->clusters, clusterSize) ||
                 !reader.readByteArray(buf->utf8text, textSize)) {
                 return nullptr;
+            }
+
+            for (int i = 0; i < glyphCount; ++i) {
+                if (buf->clusters[i] >= static_cast<uint32_t>(textSize)) {
+                    return nullptr;
+                }
             }
         }
     }

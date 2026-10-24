@@ -26,6 +26,7 @@ uint32_t create_unique_id() {
 Resource::Resource(const SharedContext* sharedContext,
                    Ownership ownership,
                    size_t gpuMemorySize,
+                   std::string_view label,
                    bool reusableRequiresPurgeable,
                    bool requiresPrepareForReturnToCache)
         : fRefs(RefIncrement(RefType::kUsage)) // Start with 1 usage ref and no others
@@ -36,7 +37,9 @@ Resource::Resource(const SharedContext* sharedContext,
         , fUniqueID(create_unique_id())
         , fOwnership(ownership)
         , fRequiresPrepareForReturnToCache(requiresPrepareForReturnToCache)
-        , fGpuMemorySize(gpuMemorySize) {
+        , fGpuMemorySize(gpuMemorySize)
+        , fLabel(label)
+        , fBackendLabelDirty(!label.empty()) {
     // At initialization time, a Resource should not be considered budgeted because it does not yet
     // belong to a ResourceCache (which manages a budget). Wrapped resources and owned-but-uncached
     // resources will never be added to a cache and can therefore depend on this default value (as
@@ -119,7 +122,7 @@ void Resource::dumpMemoryStatistics(SkTraceMemoryDump* traceMemoryDump,
 
     traceMemoryDump->dumpNumericValue(resourceName.c_str(), "size", "bytes", size);
     traceMemoryDump->dumpStringValue(resourceName.c_str(), "type", this->getResourceType());
-    traceMemoryDump->dumpStringValue(resourceName.c_str(), "label", this->getLabel());
+    traceMemoryDump->dumpStringValue(resourceName.c_str(), "label", this->getLabel().c_str());
     if (inPurgeableQueue) {
         traceMemoryDump->dumpNumericValue(resourceName.c_str(), "purgeable_size", "bytes", size);
     }

@@ -9,12 +9,14 @@
 
 #include "include/core/SkRect.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkMacros.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkMacros.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkLineClipper.h"
 #include "src/core/SkPathPriv.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 
 static bool quick_reject(const SkRect& bounds, const SkRect& clip) {
@@ -230,15 +232,15 @@ bool SkEdgeClipper::clipQuad(const SkPoint srcPts[3], const SkRect& clip) {
     const SkRect bounds = SkRect::BoundsOrEmpty({srcPts, 3});
 
     if (!quick_reject(bounds, clip)) {
-        SkPoint monoY[5];
-        int countY = SkChopQuadAtYExtrema(srcPts, monoY);
+        std::array<SkPoint, 5> monoY;
+        int countY = SkChopQuadAtYExtrema(srcPts, monoY.data());
         for (int y = 0; y <= countY; y++) {
-            SkPoint monoX[5];
-            int countX = SkChopQuadAtXExtrema(&monoY[y * 2], monoX);
+            std::array<SkPoint, 5> monoX;
+            int countX = SkChopQuadAtXExtrema(&monoY[y * 2], monoX.data());
             for (int x = 0; x <= countX; x++) {
                 this->clipMonoQuad(&monoX[x * 2], clip);
-                SkASSERT(fCurrVerb - fVerbs < kMaxVerbs);
-                SkASSERT(fCurrPoint - fPoints <= kMaxPoints);
+                SkASSERT_RELEASE(fCurrVerb - fVerbs < kMaxVerbs);
+                SkASSERT_RELEASE(fCurrPoint - fPoints <= kMaxPoints);
             }
         }
     }
@@ -432,11 +434,11 @@ bool SkEdgeClipper::clipCubic(const SkPoint srcPts[4], const SkRect& clip) {
             //
             return this->clipLine(srcPts[0], srcPts[3], clip);
         } else {
-            SkPoint monoY[10];
-            int countY = SkChopCubicAtYExtrema(srcPts, monoY);
+            std::array<SkPoint, 10> monoY;
+            int countY = SkChopCubicAtYExtrema(srcPts, monoY.data());
             for (int y = 0; y <= countY; y++) {
-                SkPoint monoX[10];
-                int countX = SkChopCubicAtXExtrema(&monoY[y * 3], monoX);
+                std::array<SkPoint, 10> monoX;
+                int countX = SkChopCubicAtXExtrema(&monoY[y * 3], monoX.data());
                 for (int x = 0; x <= countX; x++) {
                     this->clipMonoCubic(&monoX[x * 3], clip);
                     SkASSERT(fCurrVerb - fVerbs < kMaxVerbs);
@@ -456,6 +458,7 @@ bool SkEdgeClipper::clipCubic(const SkPoint srcPts[4], const SkRect& clip) {
 
 void SkEdgeClipper::appendLine(SkPoint p0, SkPoint p1) {
     *fCurrVerb++ = SkPathVerb::kLine;
+    SkASSERT_RELEASE(fCurrPoint + 2 - fPoints <= kMaxPoints);
     fCurrPoint[0] = p0;
     fCurrPoint[1] = p1;
     fCurrPoint += 2;
@@ -468,6 +471,7 @@ void SkEdgeClipper::appendVLine(SkScalar x, SkScalar y0, SkScalar y1, bool rever
         using std::swap;
         swap(y0, y1);
     }
+    SkASSERT_RELEASE(fCurrPoint + 2 - fPoints <= kMaxPoints);
     fCurrPoint[0].set(x, y0);
     fCurrPoint[1].set(x, y1);
     fCurrPoint += 2;
@@ -476,6 +480,7 @@ void SkEdgeClipper::appendVLine(SkScalar x, SkScalar y0, SkScalar y1, bool rever
 void SkEdgeClipper::appendQuad(const SkPoint pts[3], bool reverse) {
     *fCurrVerb++ = SkPathVerb::kQuad;
 
+    SkASSERT_RELEASE(fCurrPoint + 3 - fPoints <= kMaxPoints);
     if (reverse) {
         fCurrPoint[0] = pts[2];
         fCurrPoint[2] = pts[0];
@@ -490,6 +495,7 @@ void SkEdgeClipper::appendQuad(const SkPoint pts[3], bool reverse) {
 void SkEdgeClipper::appendCubic(const SkPoint pts[4], bool reverse) {
     *fCurrVerb++ = SkPathVerb::kCubic;
 
+    SkASSERT_RELEASE(fCurrPoint + 4 - fPoints <= kMaxPoints);
     if (reverse) {
         for (int i = 0; i < 4; i++) {
             fCurrPoint[i] = pts[3 - i];
@@ -509,14 +515,17 @@ std::optional<SkPathVerb> SkEdgeClipper::next(SkPoint pts[]) {
     auto verb = *fCurrVerb++;
     switch (verb) {
         case SkPathVerb::kLine:
+            SkASSERT_RELEASE(fCurrPoint + 2 - fPoints <= kMaxPoints);
             memcpy(pts, fCurrPoint, 2 * sizeof(SkPoint));
             fCurrPoint += 2;
             break;
         case SkPathVerb::kQuad:
+            SkASSERT_RELEASE(fCurrPoint + 3 - fPoints <= kMaxPoints);
             memcpy(pts, fCurrPoint, 3 * sizeof(SkPoint));
             fCurrPoint += 3;
             break;
         case SkPathVerb::kCubic:
+            SkASSERT_RELEASE(fCurrPoint + 4 - fPoints <= kMaxPoints);
             memcpy(pts, fCurrPoint, 4 * sizeof(SkPoint));
             fCurrPoint += 4;
             break;

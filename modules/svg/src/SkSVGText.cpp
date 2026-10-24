@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -23,16 +23,16 @@
 #include "include/core/SkTextBlob.h"
 #include "include/core/SkTypeface.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTemplates.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTemplates.h"
+#include "include/private/SkTo.h"
 #include "modules/skshaper/include/SkShaper.h"
 #include "modules/svg/include/SkSVGAttribute.h"
 #include "modules/svg/include/SkSVGAttributeParser.h"
 #include "modules/svg/include/SkSVGRenderContext.h"
 #include "modules/svg/src/SkSVGTextPriv.h"
-#include "src/base/SkUTF.h"
 #include "src/core/SkTextBlobPriv.h"
+#include "src/core/SkUTF.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -258,15 +258,13 @@ void SkSVGTextContext::shapePendingBuffer(const SkSVGRenderContext& ctx, const S
         std::unique_ptr<SkShaper::ScriptRunIterator> script = ctx.makeScriptRunIterator(utf8, utf8Bytes);
 
         if (bidi && script && language) {
-            fShaper->shape(utf8,
-                           utf8Bytes,
+            fShaper->shape({ utf8, utf8Bytes },
                            *font_runs,
                            *bidi,
                            *script,
                            *language,
-                           nullptr,
-                           0,
-                           SK_ScalarMax,
+                           {},
+                           {},
                            this);
             fShapeBuffer.reset();
             return;
@@ -277,15 +275,13 @@ void SkSVGTextContext::shapePendingBuffer(const SkSVGRenderContext& ctx, const S
     SkShaper::TrivialBiDiRunIterator trivial_bidi{0, 0};
     SkShaper::TrivialScriptRunIterator trivial_script{0, 0};
     SkShaper::TrivialLanguageRunIterator trivial_lang{nullptr, 0};
-    fShaper->shape(utf8,
-                   utf8Bytes,
+    fShaper->shape({ utf8, utf8Bytes},
                    *font_runs,
                    trivial_bidi,
                    trivial_script,
                    trivial_lang,
-                   nullptr,
-                   0,
-                   SK_ScalarMax,
+                   {},
+                   {},
                    this);
     fShapeBuffer.reset();
 }

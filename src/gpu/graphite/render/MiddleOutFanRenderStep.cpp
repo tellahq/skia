@@ -8,7 +8,7 @@
 #include "src/gpu/graphite/render/MiddleOutFanRenderStep.h"
 
 #include "include/core/SkPath.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkDebug.h"
 #include "src/core/SkSLTypeShared.h"
 #include "src/gpu/BufferWriter.h"
 #include "src/gpu/graphite/Attribute.h"
@@ -39,11 +39,12 @@ MiddleOutFanRenderStep::MiddleOutFanRenderStep(Layout layout, bool evenOdd)
                      /*appendAttrs=*/
                      {{{"position", VertexAttribType::kFloat2, SkSLType::kFloat2},
                      {"depth", VertexAttribType::kFloat, SkSLType::kFloat},
-                     {"ssboIndex", VertexAttribType::kUInt, SkSLType::kUInt}}}) {}
+                     {"ssboIndex", VertexAttribType::kUInt, SkSLType::kUInt}}},
+                     /*storageUniforms=*/{}) {}
 
 MiddleOutFanRenderStep::~MiddleOutFanRenderStep() {}
 
-std::string MiddleOutFanRenderStep::vertexSkSL() const {
+std::string MiddleOutFanRenderStep::vertexSkSL(const RootNodesInfo&) const {
     return
         "float4 devPosition = localToDevice * float4(position, 0.0, 1.0);\n"
         "devPosition.z = depth;\n"
@@ -51,6 +52,7 @@ std::string MiddleOutFanRenderStep::vertexSkSL() const {
 }
 
 void MiddleOutFanRenderStep::writeVertices(DrawWriter* writer,
+                                           StorageContext* /*storageContext*/,
                                            const DrawParams& params,
                                            uint32_t ssboIndex) const {
     // TODO: Have Shape provide a path-like iterator so we don't actually have to convert non

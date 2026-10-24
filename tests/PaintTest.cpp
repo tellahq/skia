@@ -20,8 +20,8 @@
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
 #include "include/effects/SkColorMatrix.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkAutoMalloc.h"
+#include "include/private/SkTemplates.h"
+#include "src/core/SkAutoMalloc.h"
 #include "src/core/SkBlurMask.h"
 #include "src/core/SkPaintPriv.h"
 #include "src/core/SkReadBuffer.h"
@@ -101,21 +101,21 @@ DEF_TEST(Paint_regression_cubic, reporter) {
 }
 
 DEF_TEST(Paint_flattening, reporter) {
-    const SkPaint::Cap caps[] = {
-        SkPaint::kButt_Cap,
-        SkPaint::kRound_Cap,
-        SkPaint::kSquare_Cap,
-    };
-    const SkPaint::Join joins[] = {
-        SkPaint::kMiter_Join,
-        SkPaint::kRound_Join,
-        SkPaint::kBevel_Join,
-    };
-    const SkPaint::Style styles[] = {
-        SkPaint::kFill_Style,
-        SkPaint::kStroke_Style,
-        SkPaint::kStrokeAndFill_Style,
-    };
+    constexpr auto caps = std::to_array<SkPaint::Cap>({
+            SkPaint::kButt_Cap,
+            SkPaint::kRound_Cap,
+            SkPaint::kSquare_Cap,
+    });
+    constexpr auto joins = std::to_array<SkPaint::Join>({
+            SkPaint::kMiter_Join,
+            SkPaint::kRound_Join,
+            SkPaint::kBevel_Join,
+    });
+    constexpr auto styles = std::to_array<SkPaint::Style>({
+            SkPaint::kFill_Style,
+            SkPaint::kStroke_Style,
+            SkPaint::kStrokeAndFill_Style,
+    });
 
 #define FOR_SETUP(index, array, setter)                                 \
     for (size_t index = 0; index < std::size(array); ++index) {         \

@@ -34,13 +34,14 @@
 #include "include/core/SkTileMode.h"
 #include "include/core/SkTypeface.h"
 #include "include/effects/SkGradient.h"
-#include "include/private/base/SkCPUTypes.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkCPUTypes.h"
+#include "include/private/SkTemplates.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkFontPriv.h"
 #include "tools/SkMetaData.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 
@@ -83,6 +84,7 @@ const char* colortype_name(SkColorType ct) {
         case kRGBA_F32_SkColorType:           return "RGBA_F32";
         case kR8G8_unorm_SkColorType:         return "R8G8_unorm";
         case kR16_unorm_SkColorType:          return "R16_unorm";
+        case kR16_float_SkColorType:          return "R16_float";
         case kR16G16_unorm_SkColorType:       return "R16G16_unorm";
         case kR16G16_float_SkColorType:       return "R16G16_float";
         case kR16G16B16A16_unorm_SkColorType: return "R16G16B16A16_unorm";
@@ -118,6 +120,7 @@ const char* colortype_depth(SkColorType ct) {
         case kRGBA_F32_SkColorType:           return "F32";
         case kR8G8_unorm_SkColorType:         return "88";
         case kR16_unorm_SkColorType:          return "R16";
+        case kR16_float_SkColorType:          return "F16";
         case kR16G16_unorm_SkColorType:       return "1616";
         case kR16G16_float_SkColorType:       return "F16F16";
         case kR16G16B16A16_unorm_SkColorType: return "16161616";
@@ -188,8 +191,8 @@ int make_pixmaps(SkColorType ct,
     int levelSize = 32;
     int numMipLevels = withMips ? 6 : 1;
     size_t size = 0;
-    SkImageInfo ii[6];
-    size_t rowBytes[6];
+    std::array<SkImageInfo, 6> ii;
+    std::array<size_t, 6> rowBytes;
     for (int level = 0; level < numMipLevels; ++level) {
         ii[level] = SkImageInfo::Make(levelSize, levelSize, ct, at);
         rowBytes[level] = ii[level].minRowBytes();
@@ -699,7 +702,7 @@ void HilbertGenerator::recursiveDraw(SkCanvas* canvas, int curDepth, bool turnLe
 }
 
 SkColor4f HilbertGenerator::getColor(float curLen) {
-    static const SkColor4f kColors[] = {
+    static const auto kColors = std::to_array<SkColor4f>({
             SkColors::kBlack,
             SkColors::kBlue,
             SkColors::kCyan,
@@ -707,9 +710,9 @@ SkColor4f HilbertGenerator::getColor(float curLen) {
             SkColors::kYellow,
             SkColors::kRed,
             SkColors::kWhite,
-    };
+    });
 
-    static const float kStops[] = {
+    static const auto kStops = std::to_array<float>({
             0.0f,
             1.0f/6.0f,
             2.0f/6.0f,
@@ -717,7 +720,7 @@ SkColor4f HilbertGenerator::getColor(float curLen) {
             4.0f/6.0f,
             5.0f/6.0f,
             1.0f,
-    };
+    });
     static_assert(std::size(kColors) == std::size(kStops));
 
     float t = curLen / fExpectedLen;

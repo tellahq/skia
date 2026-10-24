@@ -81,6 +81,7 @@ def main():
       "-DDAWN_ENABLE_DESKTOP_GL=OFF",
       "-DDAWN_ENABLE_OPENGLES=OFF",
       "-DDAWN_ENABLE_VULKAN=OFF",
+      "-DDAWN_USE_X11=OFF",
   ]
   configure_cmd += get_third_party_locations()
   if args.enable_rtti:
@@ -94,6 +95,8 @@ def main():
     configure_cmd += win_cfgs
     cxx_flags += win_cxx
     ld_flags += win_ld
+  else:
+    cxx_flags.append("-w") # Silence warnings
 
   if cxx_flags:
     c_cxx_flags_str = " ".join(cxx_flags)

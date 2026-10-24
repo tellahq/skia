@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -20,7 +20,7 @@
 #include "include/core/SkString.h"
 #include "include/core/SkTileMode.h"
 #include "include/effects/SkRuntimeEffect.h"
-#include "include/private/base/SkAssert.h"
+#include "include/private/SkAssert.h"
 #include "modules/jsonreader/SkJSONReader.h"
 #include "modules/skottie/src/Adapter.h"
 #include "modules/skottie/src/SkottieJson.h"
@@ -32,6 +32,7 @@
 #include "src/core/SkColorData.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <utility>
@@ -155,20 +156,20 @@ private:
     static SelectorCoeffs Coeffs(Selector sel) {
         // D = displacement input
         // C = displacement coverage
-        static constexpr SelectorCoeffs gCoeffs[] = {
-            { 1,0,0,0,0,   1,0 },   // kR: D = r, C = a
-            { 0,1,0,0,0,   1,0 },   // kG: D = g, C = a
-            { 0,0,1,0,0,   1,0 },   // kB: D = b, C = a
-            { 0,0,0,1,0,   0,1 },   // kA: D = a, C = 1.0
-            { SK_LUM_COEFF_R,SK_LUM_COEFF_G, SK_LUM_COEFF_B,0,0,   1,0},
-                                    // kLuminance: D = lum(rgb), C = a
-            { 1,0,0,0,0,   0,1 },   // kH: D = h, C = 1.0   (HSLA)
-            { 0,1,0,0,0,   0,1 },   // kL: D = l, C = 1.0   (HSLA)
-            { 0,0,1,0,0,   0,1 },   // kS: D = s, C = 1.0   (HSLA)
-            { 0,0,0,0,1,   0,1 },   // kFull: D = 1.0, C = 1.0
-            { 0,0,0,0,.5f, 0,1 },   // kHalf: D = 0.5, C = 1.0
-            { 0,0,0,0,0,   0,1 },   // kOff:  D = 0.0, C = 1.0
-        };
+        static constexpr auto gCoeffs = std::to_array<SelectorCoeffs>({
+                SelectorCoeffs{ 1,0,0,0,0,   1,0 }, // kR: D = r, C = a
+                SelectorCoeffs{ 0,1,0,0,0,   1,0 }, // kG: D = g, C = a
+                SelectorCoeffs{ 0,0,1,0,0,   1,0 }, // kB: D = b, C = a
+                SelectorCoeffs{ 0,0,0,1,0,   0,1 }, // kA: D = a, C = 1.0
+                SelectorCoeffs{ SK_LUM_COEFF_R, SK_LUM_COEFF_G, SK_LUM_COEFF_B, 0, 0, 1, 0},
+                                                    // kLuminance: D = lum(rgb), C = a
+                SelectorCoeffs{ 1,0,0,0,0,   0,1 }, // kH: D = h, C = 1.0   (HSLA)
+                SelectorCoeffs{ 0,1,0,0,0,   0,1 }, // kL: D = l, C = 1.0   (HSLA)
+                SelectorCoeffs{ 0,0,1,0,0,   0,1 }, // kS: D = s, C = 1.0   (HSLA)
+                SelectorCoeffs{ 0,0,0,0,1,   0,1 }, // kFull: D = 1.0, C = 1.0
+                SelectorCoeffs{ 0,0,0,0,.5f, 0,1 }, // kHalf: D = 0.5, C = 1.0
+                SelectorCoeffs{ 0,0,0,0,0,   0,1 }, // kOff:  D = 0.0, C = 1.0
+        });
 
         const auto i = static_cast<size_t>(sel);
         SkASSERT(i < std::size(gCoeffs));

@@ -11,12 +11,14 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkSize.h"
 #include "include/gpu/GpuTypes.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkAssert.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkEnumBitMask.h"
+#include "src/core/SkSafeMath.h"
 #include "src/gpu/ResourceKey.h"
 #include "src/gpu/Swizzle.h"
 #include "src/gpu/graphite/ResourceTypes.h"
+#include "src/gpu/graphite/TextureFormat.h"
 #include "src/text/gpu/SubRunControl.h"
 
 #include <cstddef>
@@ -42,7 +44,6 @@ class RendererProvider;
 class TextureInfo;
 enum class DepthStencilFlags : int;
 enum class PathRendererStrategy;
-enum class TextureFormat : uint8_t;
 struct AttachmentDesc;
 struct ContextOptions;
 struct RenderPassDesc;
@@ -83,10 +84,13 @@ struct ResourceBindingRequirements {
     int fUniformsSetIdx               = kUnassigned;
     int fTextureSamplerSetIdx         = kUnassigned;
     int fInputAttachmentSetIdx        = kUnassigned;
-    /* Define uniform buffer bindings */
+    /* Define uniform and storage buffer bindings */
     int fIntrinsicBufferBinding       = kUnassigned;
     int fCombinedUniformBufferBinding = kUnassigned;
-    int fGradientBufferBinding        = kUnassigned;
+    int fStorageBufferBinding         = kUnassigned;
+    /* Maximum texture atlas dimension for StorageBuffer fallback texture, defaults to 8192 */
+    int fMaxFallbackTextureSize       = kUnassigned;
+    int fMaxFallbackTextureBytes      = kUnassigned;
 };
 
 class Caps {
@@ -119,23 +123,43 @@ public:
 
     bool avoidMSAA() const {
         // Publicly, treat avoiding MSAA due to device issues or due to client option equivalently.
-        return fAvoidMSAA || fMaxInternalSampleCount == SampleCount::k1;
+        return fAvoidMSAA || fMaxInternalSampleCount == SampleCount::k1 || fAvoidDepthMode;
+    }
+
+    bool avoidDepthMode() const {
+        return fAvoidDepthMode;
     }
 
     /* Returns whether multisampled render to single sampled is supported. */
     bool msaaRenderToSingleSampledSupport() const { return fMSAARenderToSingleSampledSupport; }
 
+    // Sizing requirements for auxiliary attachments in a renderpass, such as the depth/stencil
+    // or color MSAA attachment.
+    enum class AttachmentSizePolicy : uint8_t {
+        kExact, // Auxiliary attachments must have the exact same size as the main texture
+        kApprox, // Auxiliary attachments can be made larger via GetApproxSize()
+        kMSAARenderArea, // MSAA-only attachments can be made smaller to fit the render bounds
+    };
+
     /**
-     * Returns whether a render pass can have MSAA/depth/stencil attachments and a resolve
-     * attachment with mismatched sizes. Note: the MSAA attachment and the depth/stencil attachment
-     * still need to match their sizes.
-     * This also implies supporting partial load/resolve.
+     * Returns whether a render pass's MSAA/depth/stencil attachments can have a different size
+     * than the resolve attachment (or the single-sampled color attachment when there is no
+     * MSAA involved).
+     *
+     * The MSAA attachment and the depth/stencil attachment must still match each other's size.
+     * If partial load/resolve is not supported, all attachments (including the resolve attachment)
+     * must still be larger than the framebuffer size.
      */
-    bool differentResolveAttachmentSizeSupport() const {
-        return fDifferentResolveAttachmentSizeSupport;
+    AttachmentSizePolicy attachmentSizePolicy() const {
+        return fAttachmentSizePolicy;
     }
 
-    /* Get required depth attachment dimensions for a givin color attachment info and dimensions. */
+    /**
+     * Get required depth attachment dimensions for a given color attachment info and dimensions.
+     * This assumes `colorAttachmentDimensions` has already been adjusted for attachmentSizePolicy()
+     * and this function's primary purpose is to handle complex requirements when rendering into
+     * multiplanar texture views.
+     */
     virtual SkISize getDepthAttachmentDimensions(const TextureInfo&,
                                                  const SkISize colorAttachmentDimensions) const {
         return colorAttachmentDimensions;
@@ -154,17 +178,18 @@ public:
                                              Protected,
                                              Renderable) const;
 
+    TextureInfo getDefaultReadableTextureInfo(TextureFormat,
+                                              Protected = Protected::kNo) const;
+
     TextureInfo getTextureInfoForSampledCopy(const TextureInfo&,  Mipmapped) const;
+    TextureInfo getTextureInfoForReadableCopy(const TextureInfo&) const;
 
     TextureInfo getDefaultCompressedTextureInfo(SkTextureCompressionType,
                                                 Mipmapped,
                                                 Protected) const;
 
     TextureInfo getDefaultStorageTextureInfo(SkColorType) const;
-
-    SkColorType getDefaultColorType(const TextureInfo&) const;
-
-    bool areColorTypeAndTextureInfoCompatible(SkColorType, const TextureInfo&) const;
+    TextureInfo getDefaultReadableStorageTextureInfo(TextureFormat, Protected) const;
 
     // Tries to return a sample count > 1 if needing MSAA to render into the target specification.
     // If the target is already multisampled, it will be that count; otherwise it will be the
@@ -175,10 +200,11 @@ public:
     // sampled targets to show MSAA isn't supported.
     SampleCount getCompatibleMSAASampleCount(const TextureInfo&) const;
 
-    // If true, the texture can be sampled within a shader (possibly with MSAA, although by default
-    // we consider multisampled textures not to be sampleable because that requires backend-specific
-    // shader code not exposed in SkSL).
+    // If true, the texture can be sampled within a shader with linear filtering.
     bool isTexturable(const TextureInfo&, bool allowMSAA=false) const;
+    // If true, the texture can be read within a shader (via nearest sampling, texel fetch,
+    // or as a readonly proxy for storage buffers).
+    bool isReadable(const TextureInfo&, bool allowMSAA=false) const;
     // If true, the texture can be rasterized and/or resolved to (possibly with MSAA)
     bool isRenderable(const TextureInfo&) const;
     // If true, the texture can be rasterized using multisample-render-to-single-sample features.
@@ -202,22 +228,6 @@ public:
 
     /* Returns a compressed label describing the immutable sampler for the Pipeline label */
     virtual std::string toString(const ImmutableSamplerInfo&) const { return ""; }
-
-    /**
-     * Given a texture config and its color type interpretation, returns the color type that matches
-     * the texture's layout after a copy (i.e. does not have any of the automatic swizzling that
-     * occurs during regular sampling). The returned colortype either represents the color type that
-     * source data must be coaxed into for writePixels(), or it represents the color type after a
-     * readPixels() operation.
-     *
-     * We currently don't have an SkColorType for a 3 channel RGB format. Additionally the current
-     * implementation of raster pipeline requires power of 2 channels, so it is not easy to add such
-     * an SkColorType. Thus we need to check for data that is 3 channels using the isRGBFormat
-     * return value and handle it manually.
-     */
-    std::pair<SkColorType, bool /*isRGB888Format*/> supportedTransferColorType(
-            SkColorType colorType,
-            const TextureInfo& textureInfo) const;
 
     // If true, uses experimental drawListLayer ordering.
     bool useDrawListLayer() const { return fDrawListLayer; }
@@ -257,8 +267,13 @@ public:
     size_t requiredTransferBufferAlignment() const { return fRequiredTransferBufferAlignment; }
 
     /* Returns the aligned rowBytes when transferring to or from a Texture */
-    size_t getAlignedTextureDataRowBytes(size_t rowBytes) const {
-        return SkAlignTo(rowBytes, fTextureDataRowBytesAlignment);
+    size_t getAlignedTextureDataRowBytes(size_t rowBytes, size_t bytesPerBlock) const {
+        SkASSERT(bytesPerBlock > 0);
+        SkASSERT(fTextureDataRowBytesAlignment > 0);
+        SkSafeMath safe;
+        size_t alignment = safe.lcm(bytesPerBlock, fTextureDataRowBytesAlignment);
+        size_t alignedRowBytes = safe.alignUpNonPow2(rowBytes, alignment);
+        return safe.ok() ? alignedRowBytes : 0;
     }
 
     /**
@@ -295,18 +310,16 @@ public:
     bool allowCpuSync() const { return fAllowCpuSync; }
 
     /* Returns whether storage buffers are supported and to be preferred over uniform buffers. */
-    bool storageBufferSupport() const { return fStorageBufferSupport; }
-
-    /**
-     * The gradient buffer is an unsized float array so it is only optimal memory-wise to use it if
-     * the storage buffer memory layout is std430 or in metal, which is also the only supported
-     * way the data is packed.
-     */
-    bool gradientBufferSupport() const {
-        return fStorageBufferSupport &&
-               (fResourceBindingReqs.fStorageBufferLayout == Layout::kStd430 ||
-                fResourceBindingReqs.fStorageBufferLayout == Layout::kMetal);
+    bool storageBufferSupport() const {
+        SkASSERT(!fStorageBufferSupport ||
+                 fResourceBindingReqs.fStorageBufferLayout == Layout::kStd430 ||
+                 fResourceBindingReqs.fStorageBufferLayout == Layout::kStd430_F16 ||
+                 fResourceBindingReqs.fStorageBufferLayout == Layout::kMetal);
+        return fStorageBufferSupport;
     }
+
+    /* Returns whether storage buffers are supported for compute dispatches. */
+    bool storageBufferSupportForCompute() const { return fStorageBufferSupportForCompute; }
 
     /* Returns whether a draw buffer can be mapped. */
     bool drawBufferCanBeMapped() const { return fDrawBufferCanBeMapped; }
@@ -426,6 +439,10 @@ public:
 protected:
     Caps();
 
+    // Initializes ShaderCaps to the baseline feature levels that Graphite assumes to be true.
+    // Called in Caps' constructor so subclasses can override or set additional flags afterwards.
+    void setDefaultShaderCaps();
+
     /**
      * Subclasses must call this at the end of their init method in order to do final processing on
      * the caps.
@@ -438,32 +455,11 @@ protected:
     }
 #endif
 
-    /* ColorTypeInfo for a specific format. Used in format tables. */
-    struct ColorTypeInfo {
-        ColorTypeInfo() = default;
-        ColorTypeInfo(SkColorType ct, SkColorType transferCt, uint32_t flags,
-                      skgpu::Swizzle readSwizzle, skgpu::Swizzle writeSwizzle)
-                : fColorType(ct)
-                , fTransferColorType(transferCt)
-                , fFlags(flags)
-                , fReadSwizzle(readSwizzle)
-                , fWriteSwizzle(writeSwizzle) {}
-
-        SkColorType fColorType = kUnknown_SkColorType;
-        SkColorType fTransferColorType = kUnknown_SkColorType;
-        enum {
-            kUploadData_Flag = 0x1,
-            /**
-             * Does Graphite itself support rendering to this colorType & format pair. Renderability
-             * still additionally depends on if the format itself is renderable.
-             */
-            kRenderable_Flag = 0x2,
-        };
-        uint32_t fFlags = 0;
-
-        skgpu::Swizzle fReadSwizzle;
-        skgpu::Swizzle fWriteSwizzle;
-    };
+    using FormatSupport = std::pair<SkEnumBitMask<TextureUsage>, SkEnumBitMask<SampleCount>>;
+    // Indexed by Tiling then TextureFormat, must be filled out by subclasses during initialization.
+    // This is zero-initialized so that every format defaults to unsupported unless a subclass
+    // provides more information.
+    std::array<std::array<FormatSupport, kTextureFormatCount>, 2> fFormatSupport{};
 
     int fMaxTextureSize = 0;
 
@@ -485,11 +481,12 @@ protected:
     bool fDrawBufferCanBeMapped = true;
     bool fBufferMapsAreAsync = false;
     bool fMSAARenderToSingleSampledSupport = false;
-    bool fDifferentResolveAttachmentSizeSupport = false;
     bool fAvoidMSAA = false;
     bool fDrawListLayer = false;
+    bool fAvoidDepthMode = false;
 
     bool fComputeSupport = false;
+    bool fStorageBufferSupportForCompute = false;
     bool fSupportsAHardwareBufferImages = false;
     bool fFullCompressedUploadSizeMustAlignToBlockDims = false;
 
@@ -512,6 +509,7 @@ protected:
 
     ResourceBindingRequirements fResourceBindingReqs;
     BlendEquationSupport fBlendEqSupport = BlendEquationSupport::kBasic;
+    AttachmentSizePolicy fAttachmentSizePolicy = AttachmentSizePolicy::kExact;
 
     GpuStatsFlags fSupportedGpuStats = GpuStatsFlags::kNone;
 
@@ -549,11 +547,6 @@ protected:
     bool fSetBackendLabels = false;
 
 private:
-    // TODO(michaelludwig): Remove these functions as Caps takes a more TextureFormat/Usage oriented
-    // approach to textures and color types.
-    const ColorTypeInfo* getColorTypeInfo(SkColorType, const TextureInfo&) const;
-    virtual SkSpan<const ColorTypeInfo> getColorTypeInfos(const TextureInfo&) const = 0;
-
     // Validates format support and calls onGetDefaultTextureInfo if it would be valid, returning
     // a TextureInfo for the first format that is supported.
     TextureInfo getDefaultTextureInfo(SkEnumBitMask<TextureUsage> usage,
@@ -574,8 +567,9 @@ private:
 
     // Return the supported TextureUsages and SampleCounts for a texture of the given format and
     // tiling, assuming the textures are created with the requisite usages.
-    virtual std::pair<SkEnumBitMask<TextureUsage>, SkEnumBitMask<SampleCount>> getTextureSupport(
-            TextureFormat format, Tiling) const = 0;
+    FormatSupport getTextureSupport(TextureFormat format, Tiling tiling) const {
+        return fFormatSupport[static_cast<int>(tiling)][static_cast<int>(format)];
+    }
 
     // Return the mask of TextureUsages supported by the described texture, as well as its tiling
     // representation. Subclasses can assume that this will only be called on valid TextureInfos

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -16,16 +16,17 @@
 #include "include/gpu/ganesh/GrBackendSemaphore.h"
 #include "include/gpu/ganesh/GrBackendSurface.h"
 #include "include/gpu/ganesh/GrContextThreadSafeProxy.h"
-#include "include/private/base/SingleOwner.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SingleOwner.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTemplates.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkAutoMalloc.h"
+#include "src/core/SkAutoMalloc.h"
 #include "src/core/SkCompressedDataUtils.h"
 #include "src/core/SkMipmap.h"
 #include "src/core/SkTaskGroup.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/gpu/DataUtils.h"
+#include "src/gpu/GlobalResourceStats.h"
 #include "src/gpu/GpuTypesPriv.h"
 #include "src/gpu/RefCntedCallback.h"
 #include "src/gpu/Swizzle.h"
@@ -202,7 +203,9 @@ void GrDirectContext::releaseResourcesAndAbandonContext() {
     fResourceCache->releaseAll();
 
     // Must be after GrResourceCache::releaseAll().
-    fMappedBufferManager.reset();
+    // Must be called before fGpu->disconnect in case there are any outstanding, unsubmitted finish
+    // procs that callback into the fMappedBufferManager.
+    fMappedBufferManager->abandon();
 
     fGpu->disconnect(GrGpu::DisconnectType::kCleanup);
 #if !defined(SK_ENABLE_OPTIMIZE_SIZE)
@@ -220,7 +223,8 @@ void GrDirectContext::freeGpuResources() {
         return;
     }
 
-    this->flushAndSubmit();
+    // TODO: bubble this error up to the client
+    (void) this->flushAndSubmit();
 #if !defined(SK_ENABLE_OPTIMIZE_SIZE)
     if (fSmallPathAtlasMgr) {
         fSmallPathAtlasMgr->reset();
@@ -429,7 +433,7 @@ skgpu::GpuStatsFlags GrDirectContext::supportedGpuStats() const {
     return this->caps()->supportedGpuStats();
 }
 
-GrSemaphoresSubmitted GrDirectContext::flush(const GrFlushInfo& info) {
+GrDirectContext::FlushResult GrDirectContext::flush(const GrFlushInfo& info) {
     ASSERT_SINGLE_OWNER
     if (this->abandoned()) {
         if (info.fFinishedProc) {
@@ -438,7 +442,7 @@ GrSemaphoresSubmitted GrDirectContext::flush(const GrFlushInfo& info) {
         if (info.fSubmittedProc) {
             info.fSubmittedProc(info.fSubmittedContext, false);
         }
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
 
     return this->drawingManager()->flushSurfaces(
@@ -455,40 +459,33 @@ bool GrDirectContext::submit(const GrSubmitInfo& info) {
         return false;
     }
 
-    return fGpu->submitToGpu(info);
+    bool result = fGpu->submitToGpu(info);
+    skgpu::GlobalResourceStats::TraceStatsSummary();
+    return result;
 }
 
-GrSemaphoresSubmitted GrDirectContext::flush(const sk_sp<const SkImage>& image,
-                                             const GrFlushInfo& flushInfo) {
+GrDirectContext::FlushResult GrDirectContext::flush(const sk_sp<const SkImage>& image,
+                                                    const GrFlushInfo& flushInfo) {
     if (!image) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
     auto ib = as_IB(image);
     if (!ib->isGaneshBacked()) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
     auto igb = static_cast<const SkImage_GaneshBase*>(image.get());
     return igb->flush(this, flushInfo);
 }
 
-void GrDirectContext::flush(const sk_sp<const SkImage>& image) {
-    this->flush(image, {});
-}
-
-void GrDirectContext::flushAndSubmit(const sk_sp<const SkImage>& image) {
-    this->flush(image, {});
-    this->submit();
-}
-
-GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
-                                             SkSurfaces::BackendSurfaceAccess access,
-                                             const GrFlushInfo& info) {
+GrDirectContext::FlushResult GrDirectContext::flush(SkSurface* surface,
+                                                    SkSurfaces::BackendSurfaceAccess access,
+                                                    const GrFlushInfo& info) {
     if (!surface) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
     auto sb = asSB(surface);
     if (!sb->isGaneshBacked()) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
 
     auto gs = static_cast<SkSurface_Ganesh*>(surface);
@@ -498,15 +495,15 @@ GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
     return this->priv().flushSurface(rtp, access, info, nullptr);
 }
 
-GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
-                                             const GrFlushInfo& info,
-                                             const skgpu::MutableTextureState* newState) {
+GrDirectContext::FlushResult GrDirectContext::flush(SkSurface* surface,
+                                                    const GrFlushInfo& info,
+                                                    const skgpu::MutableTextureState* newState) {
     if (!surface) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
     auto sb = asSB(surface);
     if (!sb->isGaneshBacked()) {
-        return GrSemaphoresSubmitted::kNo;
+        return {false, GrSemaphoresSubmitted::kNo};
     }
 
     auto gs = static_cast<SkSurface_Ganesh*>(surface);
@@ -517,13 +514,12 @@ GrSemaphoresSubmitted GrDirectContext::flush(SkSurface* surface,
             rtp, SkSurfaces::BackendSurfaceAccess::kNoAccess, info, newState);
 }
 
-void GrDirectContext::flushAndSubmit(SkSurface* surface, GrSyncCpu sync) {
-    this->flush(surface, SkSurfaces::BackendSurfaceAccess::kNoAccess, GrFlushInfo());
-    this->submit(sync);
-}
-
-void GrDirectContext::flush(SkSurface* surface) {
-    this->flush(surface, GrFlushInfo(), nullptr);
+GrDirectContext::FlushResult GrDirectContext::flushAndSubmit(SkSurface* surface, GrSyncCpu sync) {
+    FlushResult result = this->flush(surface,
+                                     SkSurfaces::BackendSurfaceAccess::kNoAccess,
+                                     GrFlushInfo());
+    result.fSuccess &= this->submit(sync);
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -722,9 +718,9 @@ static bool update_texture_with_pixmaps(GrDirectContext* context,
 
     GrSurfaceProxy* p = surfaceContext.asSurfaceProxy();
     GrFlushInfo info;
-    context->priv().drawingManager()->flushSurfaces(
+    GrDirectContext::FlushResult result = context->priv().drawingManager()->flushSurfaces(
             {&p, 1}, SkSurfaces::BackendSurfaceAccess::kNoAccess, info, nullptr);
-    return true;
+    return result.fSuccess;
 }
 
 GrBackendTexture GrDirectContext::createBackendTexture(int width,
@@ -1154,7 +1150,7 @@ bool GrDirectContext::precompileShader(const SkData& key, const SkData& data) {
 
 SkString GrDirectContext::dump() const {
     SkDynamicMemoryWStream stream;
-    SkJSONWriter writer(&stream, SkJSONWriter::Mode::kPretty);
+    SkJSONWriter           writer(&stream, SkSerialProcs{}, SkJSONWriter::Mode::kPretty);
     writer.beginObject();
 
     writer.appendCString("backend", GrBackendApiToStr(this->backend()));

@@ -1,16 +1,16 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
 #include "include/core/SkExecutor.h"
-#include "include/private/base/SkMutex.h"
-#include "include/private/base/SkSemaphore.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTPin.h"
-#include "src/base/SkNoDestructor.h"
+#include "include/private/SkMutex.h"
+#include "include/private/SkSemaphore.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTPin.h"
+#include "src/core/SkNoDestructor.h"
 
 #include <deque>
 #include <thread>
@@ -19,7 +19,7 @@
 using namespace skia_private;
 
 #if defined(SK_BUILD_FOR_WIN)
-    #include "src/base/SkLeanWindows.h"
+    #include "src/core/SkLeanWindows.h"
     static int num_cores() {
         SYSTEM_INFO sysinfo;
         GetNativeSystemInfo(&sysinfo);
@@ -43,7 +43,6 @@ public:
     void add(std::function<void(void)> work) override {
         this->add(std::move(work), /* workList= */ 0);
     }
-    int discardAllPendingWork() override { return 0;}
 };
 
 static SkExecutor& trivial_executor() {
@@ -118,18 +117,6 @@ public:
 
     void add(std::function<void(void)> work) override {
         this->add(std::move(work), /* workList= */ 0);
-    }
-
-    int discardAllPendingWork() override {
-        SkAutoMutexExclusive lock(fWorkLock);
-
-        int numDiscarded = 0;
-        for (int i = 0; i < fNumWorkLists; ++i) {
-            numDiscarded += fWorkLists[i].size();
-            fWorkLists[i].clear();
-        }
-
-        return numDiscarded;
     }
 
     void borrow() override {

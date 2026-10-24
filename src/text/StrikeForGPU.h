@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -12,6 +12,7 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkTypes.h"
 #include "src/core/SkGlyph.h"
+#include "src/partition_alloc/raw_ptr_exclusion.h"
 
 #include <memory>
 #include <optional>
@@ -107,7 +108,7 @@ union IDOrPath {
 // prepareForDrawableDrawing uses this union to convert glyph ids to drawables.
 union IDOrDrawable {
     SkGlyphID fGlyphID;
-    SkDrawable* fDrawable;
+    RAW_PTR_EXCLUSION SkDrawable* fDrawable;  // RAW_PTR_EXCLUSION: union.
 };
 
 // -- StrikeMutationMonitor ------------------------------------------------------------------------

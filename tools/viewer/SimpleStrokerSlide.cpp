@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -14,6 +14,7 @@
 
 #include "src/core/SkGeometry.h"
 
+#include <array>
 #include <vector>
 
 namespace {
@@ -354,7 +355,7 @@ class SimpleStrokerSlide : public ClickHandlerSlide {
     inline static constexpr int kN = 3;
 
 public:
-    SkPoint fPts[kN];
+    std::array<SkPoint, kN> fPts;
 
     SimpleStrokerSlide() : fShowSkiaStroke(true), fShowHidden(true), fShowSkeleton(true) {
         fPts[0] = {500, 200};

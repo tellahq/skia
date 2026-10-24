@@ -9,11 +9,14 @@
 
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
-#include "include/private/base/SkSpan_impl.h"
-#include "include/private/base/SkTArray.h"
+#include "include/core/SkSpan.h"
+#include "include/private/SkTArray.h"
 #include "src/gpu/graphite/DrawCommands.h"
+#include "src/gpu/graphite/GraphicsPipeline.h"
 #include "src/gpu/graphite/GraphicsPipelineDesc.h"
 #include "src/gpu/graphite/GraphicsPipelineHandle.h"
+#include "src/gpu/graphite/ResourceTypes.h"
+#include "src/gpu/graphite/StorageContext.h"
 
 struct SkImageInfo;
 
@@ -21,7 +24,6 @@ namespace skgpu::graphite {
 
 class CommandBuffer;
 class DrawList;
-class FloatStorageManager;
 class GraphicsPipeline;
 struct RenderPassDesc;
 class ResourceProvider;
@@ -52,7 +54,7 @@ public:
     // contained within its dimensions.
     const SkIRect&      bounds() const { return fBounds;       }
     TextureProxy* target() const { return fTarget.get(); }
-    FloatStorageManager* floatStorageManager() const { return fFloatStorageManager.get(); }
+
     std::pair<LoadOp, StoreOp> ops() const { return fOps; }
     std::array<float, 4> clearColor() const { return fClearColor; }
 
@@ -72,25 +74,36 @@ public:
         return fCommandList.commands();
     }
 
+    // The handles aren't guaranteed to have been resolved to GraphicsPipelines until
+    // after addResourceRefs() is called
     const GraphicsPipeline* getPipeline(size_t index) const {
-        return fFullPipelines[index].get();
+        SkASSERT(fPipelinesHaveBeenResolved);
+        return fPipelineHandles[index].pipelineOrNull().get();
     }
 
     // Proxies are always valid but may not be instantiated until after prepareResources() is called
     SkSpan<const sk_sp<TextureProxy>> sampledTextures() const { return fSampledTextures; }
-    // Not valid until after prepareResources() is called
-    SkSpan<const sk_sp<GraphicsPipeline>> pipelines() const { return fFullPipelines; }
+
+    // The handles aren't guaranteed to have been resolved to GraphicsPipelines until
+    // after addResourceRefs() is called
+    SkSpan<const GraphicsPipelineHandle> pipelineHandles() const { return fPipelineHandles; }
+
+    // Handles for the StorageContext data associated with the draw pass.
+    const BindBufferInfo& storageBufferInfo() const { return fStorageBufferInfo; }
+    const TextureProxy* storageFallbackTexture() const { return fStorageFallbackTexture.get(); }
+    SkEnumBitMask<PipelineStageFlags> storageBufferStages() const { return fStorageBufferStages; }
 
     [[nodiscard]] bool addResourceRefs(ResourceProvider*, CommandBuffer*);
 
 private:
-    friend class DrawList;      // For the constructor
+    friend class DrawList;      // For the constructor and setStorageResult
     friend class DrawListLayer; // ''
+
+    void setStorageResult(StorageContextResult result);
 
     DrawPass(sk_sp<TextureProxy> target,
              std::pair<LoadOp, StoreOp> ops,
-             std::array<float, 4> clearColor,
-             sk_sp<FloatStorageManager> floatStorageManager);
+             std::array<float, 4> clearColor);
 
     DrawPassCommands::List fCommandList;
 
@@ -101,7 +114,7 @@ private:
     std::array<float, 4> fClearColor;
 
     // The pipelines are referenced by index in BindGraphicsPipeline, but that will index into
-    // an array of actual GraphicsPipelines (i.e., fFullPipelines).
+    // fPipelineHandles.
     skia_private::TArray<GraphicsPipelineDesc> fPipelineDescs;
     skia_private::TArray<float> fPipelineDrawAreas;
 
@@ -109,10 +122,15 @@ private:
     skia_private::TArray<GraphicsPipelineHandle> fPipelineHandles;
     skia_private::TArray<sk_sp<TextureProxy>> fSampledTextures;
 
-    // These get resolved (from the GraphicsPipelineHandles) in prepareResources
-    skia_private::TArray<sk_sp<GraphicsPipeline>> fFullPipelines;
+    SkDEBUGCODE(bool fPipelinesHaveBeenResolved = false;)    // set in addResourceRefs
 
-    sk_sp<FloatStorageManager> fFloatStorageManager;
+    BindBufferInfo fStorageBufferInfo;
+    sk_sp<TextureProxy> fStorageFallbackTexture;
+
+    // In Vulkan, when storage buffers are not supported, image layout transition barriers must be
+    // submitted before beginning the render pass (before any pipeline is active). So store a copy
+    // of the shader stage visibility here.
+    SkEnumBitMask<PipelineStageFlags> fStorageBufferStages;
 };
 
 } // namespace skgpu::graphite

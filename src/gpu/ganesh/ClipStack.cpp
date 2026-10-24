@@ -12,6 +12,7 @@
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPath.h"
+#include "include/core/SkPoint.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkRegion.h"
 #include "include/core/SkSamplingOptions.h"
@@ -21,16 +22,15 @@
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/gpu/ganesh/GrTypes.h"
-#include "include/private/base/SkPoint_impl.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkVx.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkRRectPriv.h"
 #include "src/core/SkRectPriv.h"
 #include "src/core/SkTaskGroup.h"
 #include "src/core/SkTraceEvent.h"
+#include "src/core/SkVx.h"
 #include "src/gpu/SkBackingFit.h"
 #include "src/gpu/Swizzle.h"
 #include "src/gpu/ganesh/GrAppliedClip.h"
@@ -514,11 +514,17 @@ bool ClipStack::RawElement::contains(const Draw& d) const {
     if (fInnerBounds.contains(d.outerBounds())) {
         return true;
     } else {
+#if defined(SK_GANESH_LEGACY_MIXED_AA_CLIP_HANDLING)
+        const bool mixedAA = false;
+#else
         // If the draw is non-AA, use the already computed outer bounds so we don't need to use
-        // device-space outsetting inside shape_contains_rect.
+        // device-space outsetting inside shape_contains_rect. However, we still need to treat it
+        // as mixed-aa if the draw is anti-aliased and the clip is not.
+        const bool mixedAA = d.aa() == GrAA::kYes && fAA == GrAA::kNo;
+#endif
         SkRect queryBounds = d.aa() == GrAA::kYes ? d.bounds() : SkRect::Make(d.outerBounds());
         return shape_contains_rect(fShape, fLocalToDevice, fDeviceToLocal,
-                                   queryBounds, SkMatrix::I(), /* mixed-aa */ false);
+                                   queryBounds, SkMatrix::I(), mixedAA);
     }
 }
 

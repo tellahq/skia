@@ -20,6 +20,7 @@
 #include "include/gpu/graphite/precompile/PrecompileShader.h"
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/GraphicsPipelineDesc.h"
+#include "src/gpu/graphite/PrecompileContextPriv.h"
 #include "src/gpu/graphite/RenderPassDesc.h"
 #include "src/gpu/graphite/ResourceProvider.h"
 #include "tools/fonts/FontToolUtils.h"
@@ -120,6 +121,10 @@ std::pair<SkPaint, PaintOptions> conical(size_t numStops) {
 
 // The 12 comes from 4 types of gradient times 3 combinations (i.e., 4,8,N) for each one.
 static constexpr int kNumDiffPipelines = 12;
+// Currently all PaintOptions we test have an opaque and non-opaque intrinsic, which leads to
+// two PaintOption combinations that reduce to the same PaintParamsKey. This doesn't impact the
+// number of generated pipelines but does change the cache hits.
+static constexpr int kNumOpacityVariations = 2;
 // With the current PipelineManager's behavior we expect two Pipeline Cache searches
 // per Pipeline
 static constexpr int kNumExpectedCacheSearchesPerPipeline = 2;
@@ -150,10 +155,12 @@ void precompile_gradients(std::unique_ptr<PrecompileContext> precompileContext,
         std::shuffle(combos.begin(), combos.end(), g);
     }
 
-    const RenderPassProperties kProps = { DepthStencilFlags::kDepth,
-                                          kBGRA_8888_SkColorType,
-                                          /* dstColorSpace= */ nullptr,
-                                          /* requiresMSAA= */ false };
+    bool avoidDepthMode = precompileContext->priv().caps()->avoidDepthMode();
+    const RenderPassProperties kProps = {
+            avoidDepthMode ? DepthStencilFlags::kNone : DepthStencilFlags::kDepth,
+            kBGRA_8888_SkColorType,
+            /* dstColorSpace= */ nullptr,
+            /* requiresMSAA= */ false};
 
     for (auto c : combos) {
         auto [_, paintOptions] = c.fCreateOptionsMtd(c.fNumStops);
@@ -356,6 +363,9 @@ void run_test(Context* context,
     }
 
     context->submit(SyncToCpu::kYes);
+
+    // We need to explicitly wait for the precompilation to finish here
+    context->priv().sharedContext()->pipelineManager()->wait_TestOnly();
 }
 
 [[maybe_unused]] void dump_stats(skgpu::BackendApi api, const GlobalCache::PipelineStats& stats) {
@@ -390,28 +400,26 @@ DEF_GRAPHITE_TEST_FOR_ALL_CONTEXTS(ThreadedPipelinePrecompileTest,
              kDontPermute);
 
     const GlobalCache::PipelineStats stats = context->priv().globalCache()->getStats();
-    const PipelineManager::Stats& mgrStats =
-            context->priv().sharedContext()->pipelineManager()->getStats();
 
-    // The 48 comes from:
+    // The threaded Pipeline manager deduplicates all the tasks so we only expect (24):
     //     4 gradient flavors (linear, radial, ...) *
     //     3 types of each flavor (4, 8, N) *
-    //     4 precompile threads
-    constexpr int kExpectedPipelines = kNumDiffPipelines *
-                                       (kNumPrecompileThreads + kNumRecordingThreads);  // 48
+    //     2 opacity variations
+    constexpr int kExpectedPipelines = kNumDiffPipelines * kNumOpacityVariations;
 
     REPORTER_ASSERT(reporter, stats.fGraphicsCacheAdditions == kNumDiffPipelines);
-    REPORTER_ASSERT(reporter, stats.fGraphicsRaces > 0);
     REPORTER_ASSERT(reporter, stats.fGraphicsPurges == 0);
 
     int numCacheProbes = stats.fGraphicsCacheHits + stats.fGraphicsCacheMisses;
 
     // This test says that every expected Pipeline will incur at least one cache probe.
-    // If a task is involved then an additional cache probe is incurred. Basically, it
-    // is just checking that the Pipeline Mgr is interacting as expected with the Pipeline cache.
-    REPORTER_ASSERT(reporter, numCacheProbes == kExpectedPipelines +
-                                                mgrStats.fNumTaskCreationRaces +
-                                                mgrStats.fNumTasksCreated);
+    // Basically, it is just checking that the Pipeline Mgr is interacting as expected
+    // with the Pipeline cache.
+    REPORTER_ASSERT(reporter, numCacheProbes >= kExpectedPipelines,
+                    "%d+%d < %d",
+                    stats.fGraphicsCacheHits,
+                    stats.fGraphicsCacheMisses,
+                    kExpectedPipelines);
 }
 
 // This test runs two threads compiling the gradient flavours and two threads
@@ -430,18 +438,14 @@ DEF_GRAPHITE_TEST_FOR_ALL_CONTEXTS(ThreadedPipelinePrecompileCompileTest,
              kDontPermute);
 
     const GlobalCache::PipelineStats stats = context->priv().globalCache()->getStats();
-    const PipelineManager::Stats& mgrStats =
-            context->priv().sharedContext()->pipelineManager()->getStats();
 
-    // The 48 comes from:
+    // The threaded Pipeline manager deduplicates all the tasks so we only expect (24):
     //     4 gradient flavors (linear, radial, ...) *
     //     3 types of each flavor (4, 8, N) *
-    //     (2 normal-compile threads + 2 pre-compile threads)
-    constexpr int kExpectedPipelines = kNumDiffPipelines *
-                                       (kNumPrecompileThreads + kNumRecordingThreads);  // 48
+    //     2 opacity variations
+    constexpr int kExpectedPipelineProbes = kNumDiffPipelines * kNumOpacityVariations;
 
     REPORTER_ASSERT(reporter, stats.fGraphicsCacheAdditions == kNumDiffPipelines);
-    REPORTER_ASSERT(reporter, stats.fGraphicsRaces > 0);
     REPORTER_ASSERT(reporter, stats.fGraphicsPurges == 0);
 
     int numCacheProbes = stats.fGraphicsCacheHits + stats.fGraphicsCacheMisses;
@@ -449,9 +453,11 @@ DEF_GRAPHITE_TEST_FOR_ALL_CONTEXTS(ThreadedPipelinePrecompileCompileTest,
     // This test says that every expected Pipeline will incur at least one cache probe.
     // If a task is involved then an additional cache probe is incurred. Basically, it
     // is just checking that the Pipeline Mgr is interacting as expected with the Pipeline cache
-    REPORTER_ASSERT(reporter, numCacheProbes == kExpectedPipelines +
-                                                mgrStats.fNumTaskCreationRaces +
-                                                mgrStats.fNumTasksCreated);
+    REPORTER_ASSERT(reporter, numCacheProbes >= kExpectedPipelineProbes,
+                      "%d+%d < %d",
+                      stats.fGraphicsCacheHits,
+                      stats.fGraphicsCacheMisses,
+                      kExpectedPipelineProbes);
 }
 
 // This test compiles the gradient flavors on a thread and then tests out the time-based
@@ -533,9 +539,12 @@ DEF_GRAPHITE_TEST_FOR_ALL_CONTEXTS(ThreadedPipelinePrecompilePurgingTest,
 
     GlobalCache::PipelineStats stats = context->priv().globalCache()->getStats();
 
-    REPORTER_ASSERT(reporter, stats.fGraphicsCacheHits == 0);
-    REPORTER_ASSERT(reporter, stats.fGraphicsCacheMisses == kNumExpectedCacheSearchesPerPipeline *
-                                                            kNumDiffPipelines);
+    // The threaded PipelineManager deduplicates all the compilation tasks so each Pipeline should
+    // only be processed once.
+    int expectedCacheHits = 0;
+    REPORTER_ASSERT(reporter, stats.fGraphicsCacheHits == expectedCacheHits,
+                    "actual: %d expected: %d",
+                    stats.fGraphicsCacheHits, expectedCacheHits);
     REPORTER_ASSERT(reporter, stats.fGraphicsCacheAdditions == kNumDiffPipelines);
     REPORTER_ASSERT(reporter, stats.fGraphicsRaces == 0);
     // Precompilation doesn't count as a use so all the Pipelines will be purged even though

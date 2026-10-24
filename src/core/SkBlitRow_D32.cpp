@@ -7,12 +7,13 @@
 
 #include "include/core/SkColor.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkCPUTypes.h"
+#include "include/private/SkCPUTypes.h"
 #include "src/core/SkBlitRow.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkMemset.h"
 
+#include <array>
 #include <cstring>
 #include <iterator>
 
@@ -30,7 +31,7 @@ static void blit_row_s32_opaque(SkPMColor* dst,
 
 // TODO(mtklein): can we do better in NEON than 2 pixels at a time?
 
-#if SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_SSE2
+#if SK_CPU_X64_LEVEL >= SK_CPU_X64_LEVEL_SSE2
     #include <emmintrin.h>
     #include <xmmintrin.h>
 
@@ -538,12 +539,12 @@ static void blit_row_s32_opaque(SkPMColor* dst,
 #endif
 
 SkBlitRow::Proc32 SkBlitRow::Factory32(unsigned flags) {
-    static const SkBlitRow::Proc32 kProcs[] = {
+    static constexpr auto kProcs = std::to_array<SkBlitRow::Proc32>({
         blit_row_s32_opaque,
         blit_row_s32_blend,
         nullptr,  // blit_row_s32a_opaque is in SkOpts
         blit_row_s32a_blend
-    };
+    });
 
     SkASSERT(flags < std::size(kProcs));
     flags &= std::size(kProcs) - 1;  // just to be safe

@@ -11,9 +11,11 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
 #include "include/core/SkVertices.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "tools/DecodeUtils.h"
 #include "tools/Resources.h"
+
+#include <array>
 
 // Just want to trigger perspective handling, not dramatically change size
 static void tiny_persp_effect(SkCanvas* canvas) {
@@ -151,7 +153,7 @@ DEF_BENCH(return new VertBench(kColors_VertFlag | kTexture_VertFlag | kBilerp_Ve
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "include/core/SkRSXform.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "tools/Resources.h"
 
 enum AtlasFlags {
@@ -169,8 +171,8 @@ class AtlasBench : public Benchmark {
     static constexpr int N = 10*1000;
 
     sk_sp<SkImage>  fAtlas;
-    SkRSXform       fXforms[N];
-    SkRect          fRects[N];
+    std::array<SkRSXform, N> fXforms;
+    std::array<SkRect, N> fRects;
     SkColor         fColors[N];
 
 public:

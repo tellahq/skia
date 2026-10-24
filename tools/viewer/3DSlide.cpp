@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,10 +11,12 @@
 #include "include/core/SkRRect.h"
 #include "include/core/SkStream.h"
 #include "include/core/SkVertices.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "tools/DecodeUtils.h"
 #include "tools/Resources.h"
 #include "tools/viewer/ClickHandlerSlide.h"
+
+#include <array>
 
 struct VSphere {
     SkV2     fCenter;
@@ -166,7 +168,7 @@ struct LightOnSphere {
     }
 };
 
-#include "src/base/SkTime.h"
+#include "src/core/SkTime.h"
 
 class RotateAnimator {
     SkV3        fAxis = {0, 0, 0};
@@ -431,21 +433,21 @@ DEF_SLIDE( return new Bump3DSlide; )
 #include "modules/skottie/include/Skottie.h"
 
 class SkottieCubeSlide : public CubeBaseSlide {
-    sk_sp<skottie::Animation> fAnim[6];
+    std::array<sk_sp<skottie::Animation>, 6> fAnim;
 
 public:
     SkottieCubeSlide() : CubeBaseSlide(kCanRunOnCPU) { fName = "skottie3d"; }
 
     void load(SkScalar w, SkScalar h) override {
-        const char* files[] = {
-            "skottie/skottie-chained-mattes.json",
-            "skottie/skottie-gradient-ramp.json",
-            "skottie/skottie_sample_2.json",
-            "skottie/skottie-3d-3planes.json",
-            "skottie/skottie-text-animator-4.json",
-            "skottie/skottie-motiontile-effect-phase.json",
+        static constexpr auto files = std::to_array<const char*>({
+                "skottie/skottie-chained-mattes.json",
+                "skottie/skottie-gradient-ramp.json",
+                "skottie/skottie_sample_2.json",
+                "skottie/skottie-3d-3planes.json",
+                "skottie/skottie-text-animator-4.json",
+                "skottie/skottie-motiontile-effect-phase.json",
 
-        };
+        });
         for (unsigned i = 0; i < std::size(files); ++i) {
             if (auto stream = GetResourceAsStream(files[i])) {
                 fAnim[i] = skottie::Animation::Make(stream.get());

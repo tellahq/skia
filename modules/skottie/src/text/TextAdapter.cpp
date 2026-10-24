@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -20,8 +20,8 @@
 #include "include/core/SkSpan.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTPin.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTPin.h"
+#include "include/private/SkTo.h"
 #include "include/utils/SkTextUtils.h"
 #include "modules/jsonreader/SkJSONReader.h"
 #include "modules/skottie/include/Skottie.h"
@@ -44,6 +44,7 @@
 #include "src/core/SkPathPriv.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -349,12 +350,12 @@ sk_sp<TextAdapter> TextAdapter::Make(const skjson::ObjectValue& jlayer,
 
     // "More options"
     const skjson::ObjectValue* jm = (*jt)["m"];
-    static constexpr AnchorPointGrouping gGroupingMap[] = {
-        AnchorPointGrouping::kCharacter, // 'g': 1
-        AnchorPointGrouping::kWord,      // 'g': 2
-        AnchorPointGrouping::kLine,      // 'g': 3
-        AnchorPointGrouping::kAll,       // 'g': 4
-    };
+    static constexpr auto gGroupingMap = std::to_array<AnchorPointGrouping>({
+            AnchorPointGrouping::kCharacter,  // 'g': 1
+            AnchorPointGrouping::kWord,       // 'g': 2
+            AnchorPointGrouping::kLine,       // 'g': 3
+            AnchorPointGrouping::kAll,        // 'g': 4
+    });
     const auto apg = jm
             ? SkTPin<int>(ParseDefault<int>((*jm)["g"], 1), 1, std::size(gGroupingMap))
             : 1;
@@ -634,6 +635,10 @@ void TextAdapter::buildDomainMaps(const Shaper::Result& shape_result) {
     if (i > line_start) {
         fMaps.fLinesMap.push_back({line_start, i - line_start, line_advance, line_ascent});
     }
+
+    for (auto& animator : fAnimators) {
+        animator->updateDomainMaps(fMaps, shape_result.fFragments.size());
+    }
 }
 
 void TextAdapter::setText(const TextValue& txt) {
@@ -687,6 +692,7 @@ void TextAdapter::reshape() {
         this->shaperFlags(),
         fText->fLocale.isEmpty()     ? nullptr : fText->fLocale.c_str(),
         fText->fFontFamily.isEmpty() ? nullptr : fText->fFontFamily.c_str(),
+        fText->fTextTracking,
     };
     auto shape_result = Shaper::Shape(fText->fText, text_desc, fText->fBox, fFontMgr,
         fShapingFactory);
@@ -803,7 +809,7 @@ void TextAdapter::onSync() {
 
     // Apply all animators to the modulator buffer.
     for (const auto& animator : fAnimators) {
-        animator->modulateProps(fMaps, buf);
+        animator->modulateProps(buf);
     }
 
     const TextAnimator::DomainMap* grouping_domain = nullptr;

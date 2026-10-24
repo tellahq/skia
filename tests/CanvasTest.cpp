@@ -34,11 +34,11 @@
 #include "include/core/SkTypes.h"
 #include "include/core/SkVertices.h"
 #include "include/effects/SkImageFilters.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTemplates.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTemplates.h"
 #include "include/utils/SkNWayCanvas.h"
 #include "include/utils/SkPaintFilterCanvas.h"
-#include "src/core/SkBigPicture.h"
+#include "src/core/SkPicturePriv.h"
 #include "src/core/SkRecord.h"
 #include "src/core/SkRecords.h"
 #include "src/utils/SkCanvasStack.h"
@@ -99,8 +99,7 @@ DEF_TEST(canvas_unsorted_clip, r) {
             ->clipRect(clip);
         sk_sp<SkPicture> pic = rec.finishRecordingAsPicture();
 
-        auto bp = (const SkBigPicture*)pic.get();
-        const SkRecord* record = bp->record();
+        const SkRecord* record = SkPicturePriv::GetRecord(pic.get());
 
         REPORTER_ASSERT(r, record->count() == 1);
         REPORTER_ASSERT(r, record->visit(0, ClipRectVisitor{r})
@@ -737,7 +736,7 @@ DEF_TEST(canvas_savelayer_destructor, reporter) {
 }
 
 DEF_TEST(Canvas_saveLayer_colorSpace, reporter) {
-    SkColor pixels[1];
+    SkColor pixels[1] = { SK_ColorBLACK };
     const SkImageInfo info = SkImageInfo::MakeN32(1, 1, kOpaque_SkAlphaType);
     SkPixmap pm(info, pixels, sizeof(SkColor));
 

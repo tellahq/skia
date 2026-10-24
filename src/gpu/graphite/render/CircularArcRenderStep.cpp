@@ -10,12 +10,12 @@
 #include "include/core/SkArc.h"
 #include "include/core/SkM44.h"
 #include "include/core/SkPaint.h"
+#include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
-#include "include/private/base/SkAssert.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkPoint_impl.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkAssert.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkEnumBitMask.h"
 #include "src/core/SkSLTypeShared.h"
 #include "src/gpu/BufferWriter.h"
 #include "src/gpu/graphite/Attribute.h"
@@ -158,6 +158,7 @@ CircularArcRenderStep::CircularArcRenderStep(Layout layout, StaticBufferManager*
                              {"mat1", VertexAttribType::kFloat3, SkSLType::kFloat3},
                              {"mat2", VertexAttribType::kFloat3, SkSLType::kFloat3},
                      }},
+                     /*storageUniforms=*/{},
                      /*varyings=*/{{
                              // Normalized offset vector plus radii
                              {"circleEdge", SkSLType::kFloat4},
@@ -178,7 +179,7 @@ CircularArcRenderStep::CircularArcRenderStep(Layout layout, StaticBufferManager*
 
 CircularArcRenderStep::~CircularArcRenderStep() {}
 
-std::string CircularArcRenderStep::vertexSkSL() const {
+std::string CircularArcRenderStep::vertexSkSL(const RootNodesInfo&) const {
     // Returns the body of a vertex function, which must define a float4 devPosition variable and
     // must write to an already-defined float2 stepLocalCoords variable.
     return "float4 devPosition = circular_arc_vertex_fn("
@@ -206,6 +207,7 @@ const char* CircularArcRenderStep::fragmentCoverageSkSL() const {
 }
 
 void CircularArcRenderStep::writeVertices(DrawWriter* writer,
+                                          StorageContext* /*storageContext*/,
                                           const DrawParams& params,
                                           uint32_t ssboIndex) const {
     SkASSERT(params.geometry().isShape() && params.geometry().shape().isArc());

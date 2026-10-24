@@ -22,11 +22,11 @@
 #include "include/core/SkTypes.h"
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkCanvasPriv.h"
 #include "src/core/SkColorData.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkPointPriv.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/ganesh/GrCanvas.h"
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
@@ -49,6 +49,7 @@
 #include "src/gpu/ganesh/ops/GrOp.h"
 #include "src/gpu/ganesh/ops/GrSimpleMeshDrawOpHelper.h"
 
+#include <array>
 #include <memory>
 #include <utility>
 
@@ -247,8 +248,8 @@ protected:
             { { 0.27f * w, 0.49f * h}, { 0.41f * w, 0.02f * h }, { 0.11f * w, 0.42f * h } },
             { { 0.40f * w, 0.13f * h}, { 0.83f * w, 0.30f * h }, { 0.31f * w, 0.68f * h } },
         };
-        const SkScalar weights[kNumConics] = { 0.62f, 0.01f, 0.95f, 1.48f, 0.37f,
-                                               0.66f, 0.15f, 0.14f, 0.61f, 1.4f };
+        static constexpr std::array<SkScalar, kNumConics> weights = {
+                0.62f, 0.01f, 0.95f, 1.48f, 0.37f, 0.66f, 0.15f, 0.14f, 0.61f, 1.4f};
 
         SkPaint ctrlPtPaint;
         ctrlPtPaint.setColor(SK_ColorRED);

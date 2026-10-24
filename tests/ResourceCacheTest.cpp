@@ -25,12 +25,12 @@
 #include "include/gpu/ganesh/GrRecordingContext.h"
 #include "include/gpu/ganesh/GrTypes.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkTDArray.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkDebug.h"
+#include "include/private/SkTDArray.h"
+#include "include/private/SkTo.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkMessageBus.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/GpuTypesPriv.h"
 #include "src/gpu/ResourceKey.h"
 #include "src/gpu/SkBackingFit.h"
@@ -52,6 +52,7 @@
 #include "tools/gpu/ContextType.h"
 #include "tools/gpu/ManagedBackendTexture.h"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -1617,9 +1618,9 @@ static void test_free_texture_messages(skiatest::Reporter* reporter) {
     GrResourceCache* cache = mock.cache();
     GrGpu* gpu = mock.gpu();
 
-    GrBackendTexture backends[3];
-    sk_sp<GrTexture> wrapped[3];
-    int freed[3] = { 0, 0, 0 };
+    std::array<GrBackendTexture, 3> backends;
+    std::array<sk_sp<GrTexture>, 3> wrapped;
+    std::array<int, 3> freed = { 0, 0, 0 };
 
     auto releaseProc = [](void* ctx) {
         int* index = (int*) ctx;

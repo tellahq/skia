@@ -7,7 +7,6 @@
 #include "include/gpu/graphite/Recorder.h"
 
 #include "include/core/SkBitmap.h"
-#include "include/core/SkCPURecorder.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
@@ -23,6 +22,8 @@
 #include "include/gpu/graphite/ImageProvider.h"
 #include "include/gpu/graphite/Recording.h"
 #include "include/gpu/graphite/TextureInfo.h"
+#include "include/private/SkLog.h"
+#include "src/capture/SkCaptureManager.h"
 #include "src/core/SkMipmap.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/gpu/GpuTypesPriv.h"
@@ -34,7 +35,6 @@
 #include "src/gpu/graphite/CommandBuffer.h"
 #include "src/gpu/graphite/ContextPriv.h"
 #include "src/gpu/graphite/Device.h"
-#include "src/gpu/graphite/Log.h"
 #include "src/gpu/graphite/PaintParamsKey.h"
 #include "src/gpu/graphite/PipelineData.h"
 #include "src/gpu/graphite/ProxyCache.h"
@@ -47,7 +47,9 @@
 #include "src/gpu/graphite/ScratchResourceManager.h"
 #include "src/gpu/graphite/SharedContext.h"
 #include "src/gpu/graphite/Texture.h"
+#include "src/gpu/graphite/TextureInfoPriv.h"
 #include "src/gpu/graphite/TextureProxy.h"
+#include "src/gpu/graphite/TextureProxyView.h"
 #include "src/gpu/graphite/UploadBufferManager.h"
 #include "src/gpu/graphite/task/Task.h"
 #include "src/gpu/graphite/task/TaskList.h"
@@ -122,7 +124,6 @@ Recorder::Recorder(sk_sp<SharedContext> sharedContext,
         , fRuntimeEffectDict(sk_make_sp<RuntimeEffectDictionary>())
         , fRootTaskList(new TaskList)
         , fRootUploads(new UploadList)
-        , fFloatStorageManager(sk_make_sp<FloatStorageManager>())
         , fProxyReadCounts(new ProxyReadCountMap)
         , fUniqueID(next_id())
         , fRequireOrderedRecordings(options.fRequireOrderedRecordings.has_value()
@@ -188,12 +189,10 @@ Recorder::~Recorder() {
 
 BackendApi Recorder::backend() const { return fSharedContext->backend(); }
 
-skcpu::Recorder* Recorder::cpuRecorder() {
-    return skcpu::Recorder::TODO();
-}
+skcpu::Recorder* Recorder::cpuRecorder() { return skcpu::Recorder::TODO(); }
 
 std::unique_ptr<Recording> Recorder::snap() {
-    TRACE_EVENT0_ALWAYS("skia.gpu", TRACE_FUNC);
+    TRACE_EVENT0_ALWAYS("skia.gpu", "Snap Recording");
     ASSERT_SINGLE_OWNER
 
     if (fTargetProxyData) {
@@ -215,10 +214,25 @@ std::unique_ptr<Recording> Recorder::snap() {
                                                                                  : SK_InvalidGenID,
                                                        std::move(fTargetProxyData),
                                                        std::move(fFinishedProcs)));
+    if (fSharedContext->captureManager() &&
+        fSharedContext->captureManager()->isCurrentlyCapturing()) {
+        skia_private::TArray<uint32_t> activeStorageIDs;
+        for (const auto& device : fTrackedDevices) {
+            if (device && device->target().proxy()) {
+                activeStorageIDs.push_back(device->target().proxy()->getPixelStorageId());
+            }
+        }
+        skia_private::TArray<sk_sp<SkPicture>> allCaptured = std::move(fCapturedPictures);
+        auto remaining = fSharedContext->captureManager()->snapDrawTasksForStorageIDs(
+                activeStorageIDs);
+        for (auto& pic : remaining) {
+            allCaptured.push_back(std::move(pic));
+        }
+        recording->priv().setCapturedPictures(std::move(allCaptured));
+    }
     // Allow the buffer managers to add any collected tasks for data transfer or initialization
     // before moving the root task list to the Recording.
-    bool valid = fFloatStorageManager->finalize(fDrawBufferManager.get());
-    valid &= fDrawBufferManager->transferToRecording(recording.get());
+    bool valid = fDrawBufferManager->transferToRecording(recording.get());
 
     // We create the Recording's full task list even if the DrawBufferManager failed because it is
     // a convenient way to ensure everything else is unmapped and reset for the next Recording.
@@ -258,7 +272,11 @@ std::unique_ptr<Recording> Recorder::snap() {
     // Remaining cleanup that must always happen regardless of success or failure
     fRuntimeEffectDict = sk_make_sp<RuntimeEffectDictionary>();
     fProxyReadCounts = std::make_unique<ProxyReadCountMap>();
-    fFloatStorageManager = sk_make_sp<FloatStorageManager>();
+    for (const auto& device : fTrackedDevices) {
+        if (device) {
+            device->resetStorageCache();
+        }
+    }
     if (!fRequireOrderedRecordings) {
         fAtlasProvider->invalidateAtlases();
     }
@@ -277,7 +295,7 @@ SkCanvas* Recorder::makeDeferredCanvas(const SkImageInfo& imageInfo,
                                        const TextureInfo& textureInfo) {
     if (fTargetProxyCanvas) {
         // Require snapping before requesting another canvas.
-        SKGPU_LOG_W("Requested a new deferred canvas before snapping the previous one");
+        SKIA_LOG_W("Requested a new deferred canvas before snapping the previous one");
         return nullptr;
     }
 
@@ -303,8 +321,17 @@ SkCanvas* Recorder::makeCaptureCanvas(SkCanvas* canvas) {
 }
 
 void Recorder::createCaptureBreakpoint(SkSurface* surface) {
-   if (fSharedContext->captureManager()) {
-        fSharedContext->captureManager()->snapPicture(surface);
+    if (fSharedContext->captureManager()) {
+        auto picture = fSharedContext->captureManager()->snapPicture(surface);
+        if (picture) {
+            fCapturedPictures.push_back(std::move(picture));
+        }
+    }
+}
+
+void Recorder::deregisterCaptureCanvas(SkCanvas* canvas) {
+    if (fSharedContext->captureManager()) {
+        fSharedContext->captureManager()->deregisterCaptureCanvas(canvas);
     }
 }
 
@@ -351,7 +378,7 @@ BackendTexture Recorder::createBackendTexture(AHardwareBuffer* hardwareBuffer,
                                               SkISize dimensions,
                                               bool fromAndroidWindow) const {
     if (fSharedContext->backend() != BackendApi::kVulkan) {
-        SKGPU_LOG_W("Creating an AHardwareBuffer-backed BackendTexture is only supported with the"
+        SKIA_LOG_W("Creating an AHardwareBuffer-backed BackendTexture is only supported with the"
                     "Vulkan backend.");
         return {};
     }
@@ -390,57 +417,41 @@ bool Recorder::updateBackendTexture(const BackendTexture& backendTex,
         return false;
     }
 
-    SkColorType ct = srcData[0].colorType();
-
-    if (!this->priv().caps()->areColorTypeAndTextureInfoCompatible(ct, backendTex.info())) {
-        return false;
-    }
-
     sk_sp<Texture> texture = this->priv().resourceProvider()->createWrappedTexture(backendTex, "");
     if (!texture) {
         return false;
     }
     texture->setReleaseCallback(std::move(releaseHelper));
 
-    std::vector<MipLevel> mipLevels;
-    mipLevels.resize(numLevels);
-
+    skia_private::STArray<16, MipLevel> mipLevels(numLevels);
     for (int i = 0; i < numLevels; ++i) {
-        SkASSERT(srcData[i].addr());
         SkASSERT(srcData[i].info().colorInfo() == srcData[0].info().colorInfo());
-
-        mipLevels[i].fPixels = srcData[i].addr();
-        mipLevels[i].fRowBytes = srcData[i].rowBytes();
+        mipLevels.push_back({srcData[i].addr(), srcData[i].rowBytes()});
     }
-
-    sk_sp<TextureProxy> proxy = TextureProxy::Wrap(std::move(texture));
 
     // Src and dst colorInfo are the same
     const SkColorInfo& colorInfo = srcData[0].info().colorInfo();
-
+    TextureFormat format = TextureInfoPriv::ViewFormat(backendTex.info());
+    TextureProxyView view{TextureProxy::Wrap(std::move(texture)),
+                          ReadSwizzleForColorType(colorInfo.colorType(), format)};
     const SkIRect dimensions = SkIRect::MakeSize(backendTex.dimensions());
     UploadSource uploadSource = UploadSource::Make(
-            this->priv().caps(), *proxy, colorInfo, colorInfo, mipLevels, dimensions);
+            this->priv().caps(), std::move(view), colorInfo, colorInfo, mipLevels, dimensions);
     if (!uploadSource.isValid()) {
-        SKGPU_LOG_E("Recorder::updateBackendTexture: Could not create UploadSource");
+        SKIA_LOG_E("Recorder::updateBackendTexture: Could not create UploadSource");
         return false;
     }
 
-    // Attempt to update the texture directly on the host if possible.
-    if (uploadSource.canUploadOnHost()) {
-        return proxy->texture()->uploadDataOnHost(uploadSource, dimensions);
+    if (uploadSource.attemptUploadOnhost()) {
+        return true;
     }
 
     // Add UploadTask to Recorder
     UploadInstance upload = UploadInstance::Make(this,
-                                                 std::move(proxy),
-                                                 colorInfo,
-                                                 colorInfo,
                                                  uploadSource,
-                                                 dimensions,
                                                  std::make_unique<ImageUploadContext>());
     if (!upload.isValid()) {
-        SKGPU_LOG_E("Recorder::updateBackendTexture: Could not create UploadInstance");
+        SKIA_LOG_E("Recorder::updateBackendTexture: Could not create UploadInstance");
         return false;
     }
     sk_sp<Task> uploadTask = UploadTask::Make(std::move(upload));
@@ -480,22 +491,22 @@ bool Recorder::updateCompressedBackendTexture(const BackendTexture& backendTex,
     sk_sp<TextureProxy> proxy = TextureProxy::Wrap(std::move(texture));
 
     UploadSource uploadSource =
-            UploadSource::MakeCompressed(this->priv().caps(), *proxy, data, dataSize);
+            UploadSource::MakeCompressed(this->priv().caps(), std::move(proxy), data, dataSize);
     if (!uploadSource.isValid()) {
-        SKGPU_LOG_E("Recorder::updateBackendTexture: Could not create compressed UploadSource");
+        SKIA_LOG_E("Recorder::updateBackendTexture: Could not create compressed UploadSource");
         return false;
     }
 
-    // Attempt to update the texture directly on the host if possible.
-    if (uploadSource.canUploadOnHost()) {
-        return proxy->texture()->uploadDataOnHost(uploadSource,
-                                                  SkIRect::MakeSize(proxy->dimensions()));
+    if (uploadSource.attemptUploadOnhost()) {
+        return true;
     }
 
     // Add UploadTask to Recorder
-    UploadInstance upload = UploadInstance::MakeCompressed(this, std::move(proxy), uploadSource);
+    UploadInstance upload = UploadInstance::Make(this,
+                                                 uploadSource,
+                                                 std::make_unique<ImageUploadContext>());
     if (!upload.isValid()) {
-        SKGPU_LOG_E("Recorder::updateBackendTexture: Could not create compressed UploadInstance");
+        SKIA_LOG_E("Recorder::updateBackendTexture: Could not create compressed UploadInstance");
         return false;
     }
     sk_sp<Task> uploadTask = UploadTask::Make(std::move(upload));
@@ -544,11 +555,13 @@ void Recorder::freeGpuResources() {
     fStrikeCache->freeAll();
 }
 
-void Recorder::performDeferredCleanup(std::chrono::milliseconds msNotUsed) {
+void Recorder::performDeferredCleanup(
+        std::chrono::milliseconds msNotUsed,
+        std::optional<std::chrono::microseconds> microsMaxPurgingDur) {
     ASSERT_SINGLE_OWNER
 
     auto purgeTime = skgpu::StdSteadyClock::now() - msNotUsed;
-    fResourceProvider->purgeResourcesNotUsedSince(purgeTime);
+    fResourceProvider->purgeResourcesNotUsedSince(purgeTime, microsMaxPurgingDur);
 }
 
 size_t Recorder::currentBudgetedBytes() const {
@@ -744,6 +757,10 @@ void RecorderPriv::setContext(Context* context) {
 
 void RecorderPriv::issueFlushToken() {
     fRecorder->fTokenTracker->issueFlushToken();
+}
+
+int RecorderPriv::numRootTasks() const {
+    return fRecorder->fRootTaskList->size();
 }
 #endif
 

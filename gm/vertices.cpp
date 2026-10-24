@@ -23,8 +23,8 @@
 #include "include/core/SkVertices.h"
 #include "include/effects/SkGradient.h"
 #include "include/effects/SkRuntimeEffect.h"
-#include "include/private/base/SkTDArray.h"
-#include "src/base/SkRandom.h"
+#include "include/private/SkTDArray.h"
+#include "src/core/SkRandom.h"
 #include "src/core/SkVerticesPriv.h"
 #include "src/shaders/SkLocalMatrixShader.h"
 #include "src/utils/SkPatchUtils.h"
@@ -257,6 +257,30 @@ static void draw_batching(SkCanvas* canvas) {
         }
     }
     canvas->restore();
+}
+
+// Test to ensure SkVertices::kTriangleStrip_VertexMode works properly.
+DEF_SIMPLE_GM(vertices_strip, canvas, 600, 200) {
+    // Create a quad respecting triangle strip ordering.
+    SkRect r = SkRect::MakeWH(128, 128);
+    std::array<SkPoint, 4> pos;
+    pos[0] = r.TL();
+    pos[1] = r.BL();
+    pos[2] = r.TR();
+    pos[3] = r.BR();
+
+    sk_sp<SkShader> shader = make_shader1(1);
+    sk_sp<SkVertices> verts = SkVertices::MakeCopy(SkVertices::kTriangleStrip_VertexMode, 4,
+                                                   pos.data(), nullptr, nullptr);
+
+    SkPaint paint;
+    for (int i = 0; i < 4; ++i) {
+        SkColor color = (i % 2 == 0) ? SK_ColorRED : SK_ColorBLUE;
+        paint.setColor(color);
+        paint.setShader(i >= 2 ? shader : nullptr);
+        canvas->drawVertices(verts, SkBlendMode::kSrcOver, paint);
+        canvas->translate(150, 0);
+    }
 }
 
 // This test exists to exercise batching in the gpu backend.

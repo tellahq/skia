@@ -11,14 +11,15 @@
 #include "include/core/SkPathEffect.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkStrokeRec.h"
+#include "include/private/SkAlign.h"
+#include "include/private/SkDebug.h"
 #include "include/private/SkIDChangeListener.h"
-#include "include/private/base/SkAlign.h"
-#include "include/private/base/SkDebug.h"
-#include "include/private/base/SkMalloc.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkMalloc.h"
+#include "include/private/SkTo.h"
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <utility>
 
 
@@ -141,12 +142,12 @@ static void write_path_key_from_data(const SkPath& path, uint32_t* origKey) {
     SkASSERT(key - origKey == path_key_from_data_size(path));
 }
 
-int GrStyledShape::unstyledKeySize() const {
+uint16_t GrStyledShape::unstyledKeySize() const {
     if (fInheritedKey.count()) {
-        return fInheritedKey.count();
+        return SkTo<uint16_t>(fInheritedKey.count());
     }
 
-    int count = 1; // Every key has the state flags from the GrShape
+    uint16_t count = 1; // Every key has the state flags from the GrShape
     switch(fShape.type()) {
         case GrShape::Type::kPoint:
             static_assert(0 == sizeof(SkPoint) % sizeof(uint32_t));
@@ -170,13 +171,15 @@ int GrStyledShape::unstyledKeySize() const {
             break;
         case GrShape::Type::kPath: {
             if (0 == fGenID) {
-                return -1; // volatile, so won't be keyed
+                return 0; // volatile, so won't be keyed
             }
+            // When >= 0, `dataKeySize` is a reasonably small number bounded by
+            // kMaxKeyFromDataVerbCnt since point count is derived from verb count.
             int dataKeySize = path_key_from_data_size(fShape.path());
             if (dataKeySize >= 0) {
-                count += dataKeySize;
+                count += SkTo<uint16_t>(dataKeySize);
             } else {
-                count++; // Just adds the gen ID.
+                count += sizeof(uint64_t) / sizeof(uint32_t); // Just adds the gen ID.
             }
             break; }
         default:
@@ -215,7 +218,8 @@ void GrStyledShape::writeUnstyledKey(uint32_t* key) const {
                     write_path_key_from_data(fShape.path(), key);
                     return;
                 } else {
-                    *key++ = fGenID;
+                    memcpy(key, &fGenID, sizeof(uint64_t));
+                    key += sizeof(uint64_t) / sizeof(uint32_t);
                 }
                 break; }
             case GrShape::Type::kPoint:
@@ -251,6 +255,7 @@ void GrStyledShape::writeUnstyledKey(uint32_t* key) const {
 
 void GrStyledShape::setInheritedKey(const GrStyledShape &parent, GrStyle::Apply apply,
                                     SkScalar scale) {
+    static constexpr int kInheritedKeyLimit = 1024;
     SkASSERT(!fInheritedKey.count());
     // If the output shape turns out to be simple, then we will just use its geometric key
     if (fShape.isPath()) {
@@ -264,7 +269,7 @@ void GrStyledShape::setInheritedKey(const GrStyledShape &parent, GrStyle::Apply 
         bool useParentGeoKey = !parentCnt;
         if (useParentGeoKey) {
             parentCnt = parent.unstyledKeySize();
-            if (parentCnt < 0) {
+            if (!parentCnt) {
                 // The parent's geometry has no key so we will have no key.
                 fGenID = 0;
                 return;
@@ -283,7 +288,12 @@ void GrStyledShape::setInheritedKey(const GrStyledShape &parent, GrStyle::Apply 
             // we try to get a key for the shape.
             fGenID = 0;
             return;
+        } else if (parentCnt + styleCnt > kInheritedKeyLimit) {
+            // Prevent chained path effects and styles from growing the key too large
+            fGenID = 0;
+            return;
         }
+
         fInheritedKey.reset(parentCnt + styleCnt);
         if (useParentGeoKey) {
             // This will be the geo key.

@@ -1,23 +1,25 @@
 /*
- * Copyright 2025 Google LLC.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
 #include "include/core/SkPathTypes.h"
-#include "include/private/base/SkAssert.h"
+#include "include/private/SkAssert.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPathRaw.h"
 
-const uint8_t gVerbToSegmentMask[] = {
+#include <array>
+
+static constexpr auto gVerbToSegmentMask = std::to_array<uint8_t>({
     0,  // move
     kLine_SkPathSegmentMask,
     kQuad_SkPathSegmentMask,
     kConic_SkPathSegmentMask,
     kCubic_SkPathSegmentMask,
     0,  // close
-};
+});
 
 uint8_t SkPathPriv::ComputeSegmentMask(SkSpan<const SkPathVerb> verbs) {
     unsigned mask = 0;

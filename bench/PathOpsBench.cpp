@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,8 +11,10 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkString.h"
 #include "include/pathops/SkPathOps.h"
-#include "include/private/base/SkTArray.h"
-#include "src/base/SkRandom.h"
+#include "include/private/SkTArray.h"
+#include "src/core/SkRandom.h"
+
+#include <array>
 
 class PathOpsBench : public Benchmark {
     SkString    fName;
@@ -152,7 +154,12 @@ class PathBuilderBench : public Benchmark {
 
 public:
     PathBuilderBench(MakeType mt, bool reserve) : fMakeType(mt), fUseReserve(reserve) {
-        const char* typenames[] = { "path", "snapshot", "detach", "arrays" };
+        static constexpr auto typenames = std::to_array<const char*>({
+                "path",
+                "snapshot",
+                "detach",
+                "arrays",
+        });
 
         fName.printf("makepath_%s_%s", typenames[(int)mt], reserve ? "reserve" : "noreserve");
     }

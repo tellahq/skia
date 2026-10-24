@@ -12,11 +12,13 @@
 #include "include/core/SkRRect.h"
 #include "include/utils/SkCamera.h"
 #include "include/utils/SkShadowUtils.h"
-#include "src/base/SkUTF.h"
 #include "src/core/SkBlurMask.h"
+#include "src/core/SkUTF.h"
 #include "tools/ToolUtils.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -62,7 +64,7 @@ public:
         const SkScalar kAmbientAlpha = 0.05f;
         const SkScalar kSpotAlpha = 0.35f;
 
-        const SkScalar elevations[] = { 1, 3, 6, 8, 12, 24 };
+        static constexpr auto elevations = std::to_array<SkScalar>({1, 3, 6, 8, 12, 24});
 
         SkPaint paint;
         paint.setAntiAlias(true);

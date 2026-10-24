@@ -89,7 +89,7 @@ DEF_GRAPHITE_TEST_FOR_VULKAN_CONTEXT(VulkanDstReadsShareRenderpass, reporter, co
     SharedContext* sharedContext = context->priv().sharedContext();
 
     TextureFormat targetFormat = TextureInfoPriv::ViewFormat(
-            static_cast<const Surface*>(surface.get())->backingTextureProxy()->textureInfo());
+            static_cast<const Surface*>(surface.get())->target().proxy()->textureInfo());
 
     // Select which blend modes to use for testing: one that we do expect to require a dst read on
     // most hardware and one we do not. Assert that the dst read requirements of the modes align to
@@ -108,6 +108,9 @@ DEF_GRAPHITE_TEST_FOR_VULKAN_CONTEXT(VulkanDstReadsShareRenderpass, reporter, co
     canvas->clear(SK_ColorMAGENTA);
     canvas->drawColor(SK_ColorCYAN, simpleBlendMode);
     std::unique_ptr<Recording> simpleBlendRecording = recorder->snap();
+
+    // We need to explicitly wait for the precompilation to finish here
+    sharedContext->pipelineManager()->wait_TestOnly();
 
     // Determine the number of renderpasses used for later comparison, asserting we have at least 1.
     ResourceTypeQuantifier renderpassQuantifier { SkString("RenderPass") };

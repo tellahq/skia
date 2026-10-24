@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -15,6 +15,8 @@ extern "C" {
     // cd into the current app's Documents/ directory.
     // (This is the only directory we can easily read and write.)
     void cd_Documents(void);
+
+    int skia_ios_main(int argc, char** argv);
 
 #if defined(__cplusplus)
 }

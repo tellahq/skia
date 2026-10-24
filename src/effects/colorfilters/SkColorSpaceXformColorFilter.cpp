@@ -11,16 +11,17 @@
 #include "include/core/SkColorFilter.h"
 #include "include/core/SkData.h"
 #include "include/core/SkRefCnt.h"
-#include "src/base/SkNoDestructor.h"
 #include "src/core/SkColorFilterPriv.h"
 #include "src/core/SkColorSpaceXformSteps.h"
 #include "src/core/SkEffectPriv.h"
+#include "src/core/SkNoDestructor.h"
 #include "src/core/SkRasterPipeline.h"
 #include "src/core/SkRasterPipelineOpList.h"
 #include "src/core/SkReadBuffer.h"
 #include "src/core/SkWriteBuffer.h"
 #include "src/effects/colorfilters/SkColorFilterBase.h"
 
+#include <array>
 #include <cstdint>
 #include <utility>
 
@@ -64,7 +65,7 @@ sk_sp<SkFlattenable> SkColorSpaceXformColorFilter::LegacyGammaOnlyCreateProc(SkR
 }
 
 sk_sp<SkFlattenable> SkColorSpaceXformColorFilter::CreateProc(SkReadBuffer& buffer) {
-    sk_sp<SkColorSpace> colorSpaces[2];
+    std::array<sk_sp<SkColorSpace>, 2> colorSpaces;
     for (int i = 0; i < 2; ++i) {
         auto data = buffer.readByteArrayAsData();
         if (!buffer.validate(data != nullptr)) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -10,8 +10,10 @@
 #include "include/core/SkMatrix.h"
 #include "include/core/SkPath.h"
 #include "include/core/SkRect.h"
-#include "include/private/base/SkTo.h"
+#include "include/private/SkTo.h"
 #include "include/utils/SkShadowUtils.h"
+
+#include <array>
 
 namespace SkDrawShadowMetrics {
 
@@ -52,7 +54,7 @@ bool GetSpotShadowTransform(const SkPoint3& lightPos, SkScalar lightRadius,
         SkPoint pts[4];
         ctm.mapRectToQuad(pts, pathBounds);
 
-        SkPoint3 pts3D[4];
+        std::array<SkPoint3, 4> pts3D;
         SkScalar z = heightFunc(pathBounds.fLeft, pathBounds.fTop);
         pts3D[0].set(pts[0].fX, pts[0].fY, z);
         z = heightFunc(pathBounds.fRight, pathBounds.fTop);

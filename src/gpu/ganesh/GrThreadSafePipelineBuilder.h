@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Google Inc.
+ * Copyright 2021 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,8 +11,9 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkString.h"  // IWYU pragma: keep
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 
+#include <array>
 #include <atomic>
 
 class GrThreadSafePipelineBuilder : public SkRefCnt {
@@ -75,10 +76,10 @@ public:
         std::atomic<int> fShaderCompilations{0};
 
         std::atomic<int> fNumInlineCompilationFailures{0};
-        std::atomic<int> fInlineProgramCacheStats[kNumProgramCacheResults]{};
+        std::array<std::atomic<int>, kNumProgramCacheResults> fInlineProgramCacheStats = {};
 
         std::atomic<int> fNumPreCompilationFailures{0};
-        std::atomic<int> fPreProgramCacheStats[kNumProgramCacheResults]{};
+        std::array<std::atomic<int>, kNumProgramCacheResults> fPreProgramCacheStats = {};
 
         std::atomic<int> fNumCompilationFailures{0};
         std::atomic<int> fNumPartialCompilationSuccesses{0};

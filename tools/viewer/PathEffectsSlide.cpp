@@ -15,17 +15,19 @@
 #include "include/effects/Sk1DPathEffect.h"
 #include "include/effects/SkCornerPathEffect.h"
 #include "include/effects/SkGradient.h"
-#include "src/base/SkRandom.h"
-#include "src/base/SkUTF.h"
 #include "src/core/SkColorPriv.h"
+#include "src/core/SkRandom.h"
+#include "src/core/SkUTF.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/Slide.h"
 
+#include <array>
+
 #define CORNER_RADIUS   12
 
-static const int gXY[] = {
+static constexpr auto gXY = std::to_array<int>({
     4, 0, 0, -4, 8, -4, 12, 0, 8, 4, 0, 4
-};
+});
 
 static sk_sp<SkPathEffect> make_pe(int flags, SkScalar phase) {
     if (flags == 1) {

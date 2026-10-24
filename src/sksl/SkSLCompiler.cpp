@@ -7,9 +7,10 @@
 
 #include "src/sksl/SkSLCompiler.h"
 
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkDebug.h"
 #include "src/core/SkTraceEvent.h"
 #include "src/sksl/SkSLAnalysis.h"
+#include "src/sksl/SkSLBuiltinTypes.h"
 #include "src/sksl/SkSLContext.h"
 #include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLInliner.h"
@@ -56,14 +57,17 @@ public:
 };
 
 Compiler::Compiler() : fErrorReporter(this) {
-    auto moduleLoader = ModuleLoader::Get();
-    fContext = std::make_shared<Context>(moduleLoader.builtinTypes(), fErrorReporter);
+    fContext = std::make_shared<Context>(BuiltinTypes::Get(), fErrorReporter);
 }
 
 Compiler::~Compiler() {}
 
 const Module* Compiler::moduleForProgramKind(ProgramKind kind) {
     auto m = ModuleLoader::Get();
+    return this->moduleForProgramKind(kind, m);
+}
+
+const Module* Compiler::moduleForProgramKind(ProgramKind kind, ModuleLoader& m) {
     switch (kind) {
         case ProgramKind::kFragment:              return m.loadFragmentModule(this);
         case ProgramKind::kVertex:                return m.loadVertexModule(this);

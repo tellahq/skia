@@ -11,7 +11,7 @@
 #include "include/core/SkRefCnt.h"
 #include "include/gpu/graphite/vk/VulkanGraphiteTypes.h"
 #include "include/gpu/vk/VulkanTypes.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "src/gpu/graphite/Texture.h"
 #include "src/gpu/graphite/TextureInfoPriv.h"
 #include "src/gpu/graphite/vk/VulkanImageView.h"
@@ -23,6 +23,7 @@ namespace skgpu { class MutableTextureState; }
 namespace skgpu::graphite {
 
 class Sampler;
+class VulkanCaps;
 class VulkanSharedContext;
 class VulkanCommandBuffer;
 class VulkanDescriptorSet;
@@ -89,8 +90,10 @@ public:
     const VulkanImageView* getImageView(VulkanImageView::Usage) const;
 
     // Helpers to use for setting the layout of the VkImage
-    static VkPipelineStageFlags LayoutToPipelineSrcStageFlags(const VkImageLayout layout);
-    static VkAccessFlags LayoutToSrcAccessMask(const VkImageLayout layout);
+    static VkPipelineStageFlags LayoutToPipelineSrcStageFlags(const VkImageLayout layout,
+                                                              const VulkanCaps& caps);
+    static VkAccessFlags LayoutToSrcAccessMask(const VkImageLayout layout,
+                                               VkImageUsageFlags usageFlags);
 
     bool supportsInputAttachmentUsage() const;
 
@@ -103,10 +106,10 @@ public:
                                                   const VulkanTexture* depthStencilTexture) const;
     void addCachedFramebuffer(sk_sp<VulkanFramebuffer>);
 
-    bool canUploadOnHost(const UploadSource&) const override;
+    bool canUploadOnHost() const override;
     // Once upload is finished, the image will be in the VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     // layout.
-    bool uploadDataOnHost(const UploadSource& source, const SkIRect& dstRect) override;
+    bool uploadDataOnHost(const UploadSource& source) override;
 
 private:
     VulkanTexture(const VulkanSharedContext* sharedContext,

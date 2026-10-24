@@ -31,6 +31,7 @@
 #include "tools/ToolUtils.h"
 #include "tools/fonts/FontToolUtils.h"
 
+#include <array>
 #include <utility>
 
 // limit this just so we don't take too long to draw
@@ -42,7 +43,7 @@ static SkScalar drawString(SkCanvas* canvas, const SkString& text, SkScalar x,
     return x + font.measureText(text.c_str(), text.size(), SkTextEncoding::kUTF8);
 }
 
-static SkScalar drawCharacter(SkCanvas* canvas, uint32_t character, SkScalar x,
+static SkScalar drawCharacter(SkCanvas* canvas, SkUnichar character, SkScalar x,
                               SkScalar y, const SkFont& origFont, SkFontMgr* fm,
                               const char* fontName, const char* bcp47[], int bcp47Count,
                               const SkFontStyle& fontStyle) {
@@ -55,17 +56,30 @@ static SkScalar drawCharacter(SkCanvas* canvas, uint32_t character, SkScalar x,
     font.setTypeface(typeface);
     x = drawString(canvas, ch, x, y, font) + 20;
 
-    if (nullptr == typeface) {
-        return x;
-    }
-
     // repeat the process, but this time use the family name of the typeface
     // from the first pass.  This emulates the behavior in Blink where it
     // it expects to get the same glyph when following this pattern.
-    SkString familyName;
-    typeface->getFamilyName(&familyName);
-    font.setTypeface(fm->legacyMakeTypeface(familyName.c_str(), typeface->fontStyle()));
-    return drawString(canvas, ch, x, y, font) + 20;
+    if (typeface) {
+        SkString familyName;
+        typeface->getFamilyName(&familyName);
+        font.setTypeface(fm->legacyMakeTypeface(familyName.c_str(), typeface->fontStyle()));
+        x = drawString(canvas, ch, x, y, font) + 20;
+    }
+
+    // find typeface containing the requested character and draw it
+    SkFontMgr::Request request;
+    SkFontMgr::Request::CMapEntry cmapEntry{character, 0};
+    request.cmapEntries = SkSpan(&cmapEntry, 1);
+    request.bcp47 = SkSpan(bcp47, bcp47Count);
+    request.familyName = fontName;
+    SkFontArguments::VariationPosition::Coordinate model[4];
+    SkFontMgr::Request::SetModel(fontStyle, model);
+    request.model = SkSpan(model);
+    sk_sp<SkTypeface> typeface1 = fm->fallback(request);
+    font.setTypeface(typeface1);
+    x = drawString(canvas, ch, x, y, font) + 20;
+
+    return x;
 }
 
 static const char* zh = "zh";
@@ -191,9 +205,12 @@ class FontMgrMatchGM : public skiagm::GM {
         font.setSubpixel(true);
         font.setSize(17);
 
-        const char* gNames[] = {
-            "Helvetica Neue", "Arial", "sans", "Roboto"
-        };
+        static constexpr auto gNames = std::to_array<const char*>({
+                "Helvetica Neue",
+                "Arial",
+                "sans",
+                "Roboto",
+        });
 
         sk_sp<SkFontStyleSet> fset;
         for (size_t i = 0; i < std::size(gNames); ++i) {
@@ -346,7 +363,7 @@ private:
         font.setScaleX(fScaleX);
         font.setSkewX(fSkewX);
 
-        const SkColor boundsColors[2] = { SK_ColorRED, SK_ColorBLUE };
+        const std::array<SkColor, 2> boundsColors = {SK_ColorRED, SK_ColorBLUE};
 
         SkFontMgr* fm = fFM.get();
         int count = fm->countFamilies();

@@ -15,8 +15,9 @@
 #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "include/gpu/ganesh/vk/GrVkTypes.h"
 #include "include/gpu/vk/VulkanTypes.h"
-#include "include/private/base/SkLog.h"
+#include "include/private/SkLog.h"
 #include "include/private/gpu/vk/SkiaVulkan.h"
+#include "src/gpu/GlobalResourceStats.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
 #include "src/gpu/ganesh/vk/GrVkCaps.h"
 #include "src/gpu/ganesh/vk/GrVkGpu.h"
@@ -33,6 +34,7 @@ GrBackendFormat GetVulkanBackendFormat(GrDirectContext* dContext, AHardwareBuffe
                                        uint32_t bufferFormat, bool requireKnownFormat) {
     GrBackendApi backend = dContext->backend();
     if (backend != GrBackendApi::kVulkan) {
+        SKIA_LOG_E("GrDirectContext is not a Vulkan context.");
         return GrBackendFormat();
     }
 
@@ -76,6 +78,8 @@ GrBackendFormat GetVulkanBackendFormat(GrDirectContext* dContext, AHardwareBuffe
 #endif
         default: {
             if (requireKnownFormat) {
+                SKIA_LOG_W("Unknown AHardwareBuffer format %u, but known format required.",
+                           bufferFormat);
                 return GrBackendFormat();
             }
             break;
@@ -101,6 +105,7 @@ GrBackendFormat GetVulkanBackendFormat(GrDirectContext* dContext, AHardwareBuffe
     VkDevice device = gpu->device();
 
     if (!gpu->vkCaps().supportsAndroidHWBExternalMemory()) {
+        SKIA_LOG_E("Vulkan caps do not support Android HWB external memory.");
         return GrBackendFormat();
     }
 
@@ -108,6 +113,7 @@ GrBackendFormat GetVulkanBackendFormat(GrDirectContext* dContext, AHardwareBuffe
     VkAndroidHardwareBufferPropertiesANDROID hwbProps;
     if (!GetAHardwareBufferProperties(
                 &hwbFormatProps, &hwbProps, gpu->vkInterface(), hardwareBuffer, device)) {
+        SKIA_LOG_E("Failed to get AHardwareBuffer properties.");
         return GrBackendFormat();
     }
 
@@ -119,22 +125,35 @@ GrBackendFormat GetVulkanBackendFormat(GrDirectContext* dContext, AHardwareBuffe
 
 class VulkanCleanupHelper {
 public:
-    VulkanCleanupHelper(GrVkGpu* gpu, VkImage image, VkDeviceMemory memory)
-        : fDevice(gpu->device())
-        , fImage(image)
-        , fMemory(memory)
-        , fDestroyImage(gpu->vkInterface()->fFunctions.fDestroyImage)
-        , fFreeMemory(gpu->vkInterface()->fFunctions.fFreeMemory) {}
+    VulkanCleanupHelper(GrVkGpu* gpu, VkImage image, VkDeviceMemory memory,
+                        size_t size, skgpu::Protected isProtected)
+            : fDevice(gpu->device())
+            , fImage(image)
+            , fMemory(memory)
+            , fDestroyImage(gpu->vkInterface()->fFunctions.fDestroyImage)
+            , fFreeMemory(gpu->vkInterface()->fFunctions.fFreeMemory)
+            , fSize(size)
+            , fProtected(isProtected) {
+        skgpu::GlobalResourceStats::RecordCreateBackendTexture(isProtected, size);
+    }
+
     ~VulkanCleanupHelper() {
         fDestroyImage(fDevice, fImage, nullptr);
         fFreeMemory(fDevice, fMemory, nullptr);
+
+        skgpu::GlobalResourceStats::RecordDeleteBackendTexture(fProtected, fSize);
     }
+
 private:
     VkDevice           fDevice;
     VkImage            fImage;
     VkDeviceMemory     fMemory;
     PFN_vkDestroyImage fDestroyImage;
     PFN_vkFreeMemory   fFreeMemory;
+
+    // For stats tracking
+    size_t fSize;
+    skgpu::Protected fProtected;
 };
 
 void delete_vk_image(void* context) {
@@ -166,6 +185,7 @@ static GrBackendTexture make_vk_backend_texture(
     VkDevice device = gpu->device();
 
     if (!gpu->vkCaps().supportsAndroidHWBExternalMemory()) {
+        SKIA_LOG_E("Vulkan caps do not support Android HWB external memory.");
         return GrBackendTexture();
     }
 
@@ -182,6 +202,7 @@ static GrBackendTexture make_vk_backend_texture(
     VkAndroidHardwareBufferPropertiesANDROID hwbProps;
     if (!skgpu::GetAHardwareBufferProperties(
                 &hwbFormatProps, &hwbProps, gpu->vkInterface(), hardwareBuffer, device)) {
+        SKIA_LOG_E("Failed to get AHardwareBuffer properties.");
         return GrBackendTexture();
     }
     VkFormat hwbVkFormat = hwbFormatProps.format;
@@ -207,6 +228,7 @@ static GrBackendTexture make_vk_backend_texture(
     const skgpu::VulkanYcbcrConversionInfo* ycbcrConversion =
             GrBackendFormats::GetVkYcbcrConversionInfo(grBackendFormat);
     if (!ycbcrConversion) {
+        SKIA_LOG_E("Failed to get YcbcrConversionInfo from GrBackendFormat.");
         return GrBackendTexture();
     }
 
@@ -279,6 +301,7 @@ static GrBackendTexture make_vk_backend_texture(
     VkResult err;
     err = VK_CALL(CreateImage(device, &imageCreateInfo, nullptr, &image));
     if (VK_SUCCESS != err) {
+        SKIA_LOG_E("vkCreateImage failed (err: %d)", err);
         return GrBackendTexture();
     }
 
@@ -290,6 +313,7 @@ static GrBackendTexture make_vk_backend_texture(
     skgpu::VulkanAlloc alloc;
     if (!skgpu::AllocateAndBindImageMemory(&alloc, image, phyDevMemProps, hwbProps, hardwareBuffer,
                                            gpu->vkInterface(), device)) {
+        SKIA_LOG_E("AllocateAndBindImageMemory failed.");
         VK_CALL(DestroyImage(device, image, nullptr));
         return GrBackendTexture();
     }
@@ -312,9 +336,12 @@ static GrBackendTexture make_vk_backend_texture(
     imageInfo.fPartOfSwapchainOrAndroidWindow = fromAndroidWindow;
 #endif
 
+    const size_t size = GrSurface::ComputeSize(grBackendFormat, {width, height},
+                                               /*colorSamplesPerPixel=*/1, skgpu::Mipmapped::kNo);
+
     *deleteProc = delete_vk_image;
     *updateProc = update_vk_image;
-    *imageCtx = new VulkanCleanupHelper(gpu, image, alloc.fMemory);
+    *imageCtx = new VulkanCleanupHelper(gpu, image, alloc.fMemory, size, imageInfo.fProtected);
 
     return GrBackendTextures::MakeVk(width, height, imageInfo);
 }
@@ -336,14 +363,17 @@ GrBackendTexture MakeVulkanBackendTexture(GrDirectContext* dContext,
                                           bool fromAndroidWindow) {
     SkASSERT(dContext);
     if (!dContext || dContext->abandoned()) {
+        SKIA_LOG_E("GrDirectContext is null or abandoned.");
         return GrBackendTexture();
     }
 
     if (GrBackendApi::kVulkan != dContext->backend()) {
+        SKIA_LOG_E("GrDirectContext is not a Vulkan context.");
         return GrBackendTexture();
     }
 
     if (isProtectedContent && !can_import_protected_content(dContext)) {
+        SKIA_LOG_E("Protected content requested but not supported by the context.");
         return GrBackendTexture();
     }
 

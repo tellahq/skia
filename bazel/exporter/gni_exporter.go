@@ -67,14 +67,17 @@ type GNIExporter struct {
 
 // The footer written to gn/codec.gni.
 const codecGNIFooter = `
-skia_codec_rust_bmp_ffi_crate_root = "$_experimental/rust_bmp/ffi/FFI.rs"
+skia_codec_rust_bmp_ffi_crate_root = "$_rust/bmp/FFI.rs"
+skia_codec_rust_ico_ffi_crate_root = "$_experimental/rust_ico/ffi/FFI.rs"
 skia_codec_rust_png_ffi_crate_root = "$_rust/png/FFI.rs"
+skia_codec_rust_jpeg_ffi_crate_root = "$_experimental/rust_jpeg/ffi/FFI.rs"
 `
 
 // The footer written to gn/rust.gni.
 const rustGNIFooter = `
 skia_rust_common_ffi_crate_root = "$_rust/common/io_traits_ffi.rs"
 skia_rust_icc_ffi_crate_root = "$_rust/icc/FFI.rs"
+skia_rust_exif_ffi_crate_root = "$_rust/exif/FFI.rs"
 `
 
 // The footer written to gn/sksl_tests.gni.

@@ -19,18 +19,20 @@
 #include "include/core/SkTypeface.h"
 #include "include/core/SkVertices.h"
 #include "include/effects/SkGradient.h"
-#include "include/private/base/SkTDArray.h"
-#include "src/base/SkRandom.h"
-#include "src/base/SkTime.h"
-#include "src/base/SkUTF.h"
+#include "include/private/SkTDArray.h"
 #include "src/core/SkColorPriv.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkOSFile.h"
+#include "src/core/SkRandom.h"
+#include "src/core/SkTime.h"
+#include "src/core/SkUTF.h"
 #include "tools/DecodeUtils.h"
 #include "tools/Resources.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/ClickHandlerSlide.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 namespace {
 static sk_sp<SkShader> make_shader0(SkIPoint* size) {
@@ -210,7 +212,7 @@ struct PatchSlide : public ClickHandlerSlide {
     SkScalar fAngle = 0;
     SkIPoint fSize0 = {0, 0},
              fSize1 = {0, 0};
-    SkPoint  fPts[12] = {
+    std::array<SkPoint, 12> fPts = {{
         {kS * 0, kT * 1},
         {kS * 1, kT * 1},
         {kS * 2, kT * 1},
@@ -223,7 +225,7 @@ struct PatchSlide : public ClickHandlerSlide {
         {kS * 0, kT * 4},
         {kS * 0, kT * 3},
         {kS * 0, kT * 2},
-    };
+    }};
 
 public:
     PatchSlide() { fName = "Patch"; }
@@ -260,7 +262,7 @@ public:
         }
         patch.setBounds(fSize0.fX, fSize0.fY);
 
-        patch.setPatch(fPts);
+        patch.setPatch(fPts.data());
         drawpatches(canvas, paint, nu, nv, &patch);
 
         paint.setShader(nullptr);
@@ -365,7 +367,7 @@ static sk_sp<SkVertices> make_verts(const SkPathBuilder& pathbuilder, SkScalar w
 class PseudoInkSlide : public ClickHandlerSlide {
     enum { N = 100 };
     SkPathBuilder     fPath;
-    sk_sp<SkVertices> fVertices[N];
+    std::array<sk_sp<SkVertices>, N> fVertices;
     SkPaint           fSkeletonP, fStrokeP, fVertsP;
     bool              fDirty = true;
 

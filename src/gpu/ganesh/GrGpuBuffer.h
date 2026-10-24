@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google Inc.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -94,7 +94,7 @@ public:
      *
      * @return returns true if the update succeeds, false otherwise.
      */
-    bool updateData(const void* src, size_t offset, size_t size, bool preserve);
+    [[nodiscard]] bool updateData(const void* src, size_t offset, size_t size, bool preserve);
 
     GrGpuBufferType intendedType() const { return fIntendedType; }
 

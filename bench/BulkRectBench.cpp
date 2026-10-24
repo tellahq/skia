@@ -12,12 +12,14 @@
 #include "include/core/SkPaint.h"
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/SkImageGanesh.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkCanvasPriv.h"
+#include "src/core/SkRandom.h"
 #include "src/gpu/ganesh/GrCanvas.h"
 #include "src/gpu/ganesh/GrOpsTypes.h"
 #include "src/gpu/ganesh/SkGr.h"
 #include "src/gpu/ganesh/SurfaceDrawContext.h"
+
+#include <array>
 
 // Benchmarks that exercise the bulk image and solid color quad APIs, under a variety of patterns:
 enum class ImageMode {
@@ -62,9 +64,9 @@ public:
     }
 
 protected:
-    SkRect         fRects[kRectCount];
+    std::array<SkRect, kRectCount> fRects;
     sk_sp<SkImage> fImages[kImageCount > 0 ? kImageCount : 1];
-    SkColor4f      fColors[kRectCount];
+    std::array<SkColor4f, kRectCount> fColors;
     SkString       fName;
 
     void computeName()  {

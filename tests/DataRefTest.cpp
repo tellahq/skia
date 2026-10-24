@@ -12,7 +12,7 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkString.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkMalloc.h"
+#include "include/private/SkMalloc.h"
 #include "src/core/SkOSFile.h"
 #include "src/utils/SkOSPath.h"
 #include "tests/Test.h"
@@ -287,14 +287,14 @@ DEF_TEST(Data, reporter) {
 }
 
 DEF_TEST(Data_empty, reporter) {
-    sk_sp<SkData> array[] = {
-        SkData::MakeEmpty(),
-        SkData::MakeUninitialized(0),
-        SkData::MakeFromMalloc(sk_malloc_throw(0), 0),
-        SkData::MakeWithCopy("", 0),
-        SkData::MakeWithProc(nullptr, 0, [](const void*, void*){}, nullptr),
-        SkData::MakeWithoutCopy(nullptr, 0),
-    };
+    auto array = std::to_array<sk_sp<SkData>>({
+            SkData::MakeEmpty(),
+            SkData::MakeUninitialized(0),
+            SkData::MakeFromMalloc(sk_malloc_throw(0), 0),
+            SkData::MakeWithCopy("", 0),
+            SkData::MakeWithProc(nullptr, 0, [](const void*, void*) {}, nullptr),
+            SkData::MakeWithoutCopy(nullptr, 0),
+    });
     constexpr int N = std::size(array);
 
     for (int i = 0; i < N; ++i) {

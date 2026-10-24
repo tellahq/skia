@@ -13,7 +13,7 @@
 #include "include/core/SkScalar.h"
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkMacros.h"
+#include "include/private/SkMacros.h"
 
 #include <cstdint>
 #include <cstring>
@@ -427,6 +427,14 @@ public:
         return SkRRect(fRect.makeOffset(dx, dy), fRadii, fType);
     }
 
+    /** Returns true if point is inside the bounds and corner radii, and if
+        SkRRect is not empty.
+
+        @param point  position tested for containment
+        @return       true if SkRRect contains point
+    */
+    bool contains(const SkPoint& point) const;
+
     /** Returns true if rect is inside the bounds and corner radii, and if
         SkRRect and rect are not empty.
 
@@ -507,8 +515,6 @@ public:
     void dumpHex() const { this->dump(true); }
 
 private:
-    static bool AreRectAndRadiiValid(const SkRect&, const SkVector[4]);
-
     SkRRect(const SkRect& rect, const SkVector radii[4], int32_t type)
         : fRect(rect)
         , fRadii{radii[0], radii[1], radii[2], radii[3]}

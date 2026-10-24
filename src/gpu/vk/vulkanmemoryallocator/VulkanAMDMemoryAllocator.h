@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -29,7 +29,6 @@ public:
     static sk_sp<VulkanMemoryAllocator> Make(VkInstance instance,
                                              VkPhysicalDevice physicalDevice,
                                              VkDevice device,
-                                             uint32_t physicalDeviceVersion,
                                              const VulkanExtensions* extensions,
                                              const VulkanInterface* interface,
                                              ThreadSafe);

@@ -2,6 +2,119 @@ Skia Graphics Release Notes
 
 This file includes a list of high level updates for each milestone release.
 
+Milestone 156
+-------------
+
+* * *
+
+Milestone 155
+-------------
+  * The error handling associated with Ganesh's GrDirectContext flushing has been updated. Instead of returning a GrSemaphoresSubmitted value which conflates semaphore submission and flush success, a new FlushResult struct is returned - which explicitly separates the two concerns. FlushResult has an implicit cast which allows clients to still use the old GrSemaphoresSubmitted-based API.
+  * `skcpu::Context`, `skcpu::Recorder`, `GrRecordingContext::makeCPURecorder()`, and `skgpu::graphite::Context::makeCPURecorder()` have been removed.
+
+* * *
+
+Milestone 154
+-------------
+
+* * *
+
+Milestone 153
+-------------
+  * `SkLogHandler` has been added as a global callback interface to intercept Skia's internal logs. Clients can implement this interface and install it via `SkLogHandler::SetInstance` to receive all messages generated through the `SKIA_LOG` macros. `SkLogHandler` uses `sk_sp` for shared ownership, allowing clients to maintain a reference to the handler.
+  * `SkImageFilters::RuntimeShader` factories now take an optional
+    `restrictOutputToInputBounds` parameter (default `false`). When `true`, the
+    caller promises that the SkSL evaluates to transparent black wherever its child
+    shaders are transparent black, allowing the filter's output to be restricted to
+    the union of its inputs' bounds instead of being unbounded. This lets effects
+    composed after the runtime shader (e.g. a blur using a non-decal tile mode)
+    observe the intended content bounds.
+  * Added the `skia_enable_threadlocal_strikecache` GN build argument
+    (which defines `SK_ENABLE_THREADLOCAL_STRIKECACHE`) to enable
+    thread-local `SkStrikeCache` instances
+  * Graphite's `PipelineManager` can now make use of the `SkExecutor` passed in via `ContextOptions`. If provided, the `SkExecutor` will be used to compile Pipelines.
+
+* * *
+
+Milestone 152
+-------------
+  * Add skgpu::graphite::ContextOptions::fAvoidDepth. Enabling this will lead
+    graphite to avoid using the depth/stencil buffer, and fallback to analytic path
+    and turn off depth occlusion culling when necessary.
+  * Add SkRRect::contains(const SkPoint&). This allows point vs RRectF intersection
+    testing. As SkRRect::contains(const SkRectF&), returns true if the point is
+    inside the SkRRect and the SkRRect is not empty.
+  * Since SkPath data is now immutable and we always compute the bounds
+    upfront, SkPath::updateBoundsCache() no longer serves any purpose
+    and has been removed.
+  * Added a new `SkIcoRustDecoder` which decodes ICO and CUR images using Rust-based
+    PNG and BMP decoders for the embedded images. Register `SkIcoRustDecoder::Decoder()`
+    with `SkCodecs::Register` to enable it. This is built when `skia_use_rust_ico_decode`
+    is enabled (defining `SK_CODEC_DECODES_ICO_WITH_RUST`).
+
+* * *
+
+Milestone 151
+-------------
+  * Added a 'containsExternalFormat' method to 'PrecompileContext'. This allows clients to determine if a serialized key contains an external format.
+  * Added 'fGainmap' and 'fGainmapInfo' to 'SkPngRustEncoder::Options', allowing clients to encode HDR gainmaps in PNG images using the Rust PNG encoder.
+  * Add a getWidthsStrided() API to SkStrikeRef which allows scattered memory access
+    into input glyph list and provides scattered writes with a stride length into a
+    client provided output buffer.  Useful for fast access and transfer of advance
+    widths in shaping. Shown to improve Blink performance.
+
+* * *
+
+Milestone 150
+-------------
+  * `SkRegion::setRects(const SkIRect[], int)` has been deprecated in favor of `SkRegion::setRects(SkSpan<const SkIRect>)`.
+  * Added `SkStrikeRef`, a public lightweight handle to a resolved font strike.
+    `SkFont::makeStrikeRef()` returns an `SkStrikeRef` that allows repeated glyph
+    metric queries (advances, bounds) without the per-call overhead of strike
+    lookup. This is useful for text shaping engines that make many `getWidths`
+    calls with the same font configuration.
+
+* * *
+
+Milestone 149
+-------------
+  * Add bitwise operators for working with skgpu::GpuStatsFlags.
+  * * The following new feature is only supported by the Graphite backend.
+
+    * Allow clients to pass in a maximum time duration Skia should spend when purging purgeable
+      resources from caches. Skia will purge available purgeable resources until all purgeable resources
+      are removed *or* until the purge time has been surpassed, at which point we exit early.
+
+    * Clients can either call the Context or the Recorder's performDeferredCleanup(...) method with a
+      max duration in microseconds. Following the current implementation pattern, durations passed in
+      get converted to time points when calling in to the ResourceCache itself.
+
+    * Public API calls into performDeferredCleanup accept an optional stop time duration which is set to
+      std::nullopt by default.  This signifies no time limit for purging and means this change should
+      not disrupt current client API calls nor impact existing functionality.
+  * The PrecompileContext's getPipelineLabel method can now, optionally, return the uniqueHash for the serializedPipelineKey. Note that this uniqueHash is only valid for the lifetime of the Context used to create the invoking PrecompileContext.
+  * PrecompileColorFilters::Matrix() can now specify clamped or unclamped filtering.
+
+* * *
+
+Milestone 148
+-------------
+  * * The `leakTracer` argument to `SkEventTracer::SetInstance` is removed and now behaves as if
+      `leakTracer=true`. Previously, with `leakTracer=false` the `SkEventTracer` would be deleted in an
+      `atexit` handler, but this could lead to race conditions in a multithreaded application during
+      process exiting. Leaking the object at exit is effectively the same behavior but avoids the races.
+    * `SkEventTracer` adds a new `onExit()` virtual that defaults to doing nothing. This will be called
+      on process exit and can be used in place of any flushing logic in a destructor.
+  * * `SkImages::WrapTexture` no longer requires providing an `SkColorType`. A closest compatible
+       SkColorType will be chosen as long as the texture's format is supported and the texture is
+       sampleable. Additionally, wrapped textures can now be forced to opaque by specifying
+       `kUnknown_SkAlphaType`. Single-channel texture formats map to either alpha-only or red color
+       types based on the provided `SkAlphaType`.
+  * Mock-specific calls are removed from GrBackendSurface.h. Clients should use the equivalents found in `include/gpu/ganesh/mock/GrMockBackendSurface.h`
+  * Adds `kR16_float_SkColorType` enum value to hold f16 red values, analogous to `kAlpha16_float_SkColorType`. Now all single-channel data types can represent red or alpha.
+
+* * *
+
 Milestone 147
 -------------
   * `SkCodec::getEncodedData()` has been removed from the public API

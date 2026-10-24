@@ -11,9 +11,11 @@
 
 #include "include/core/SkRefCnt.h"
 #include "include/gpu/ganesh/GrTypes.h"
-#include "include/private/base/SkNoncopyable.h"
-#include "include/private/base/SkTemplates.h"
-#include "src/base/SkScopeExit.h"
+#include "include/private/SkNoncopyable.h"
+#include "include/private/SkTemplates.h"
+#include "src/core/SkScopeExit.h"
+
+#include <array>
 
 class GrDirectContext;
 struct GrContextOptions;
@@ -108,7 +110,7 @@ private:
         kMaxFrameLag = 3
     };
 
-    sk_sp<FlushFinishTracker> fFinishTrackers[kMaxFrameLag - 1];
+    std::array<sk_sp<FlushFinishTracker>, kMaxFrameLag - 1> fFinishTrackers;
     int fCurrentFlushIdx = 0;
 
     using INHERITED = SkNoncopyable;

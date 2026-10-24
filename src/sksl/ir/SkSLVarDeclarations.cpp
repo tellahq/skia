@@ -8,8 +8,8 @@
 #include "src/sksl/ir/SkSLVarDeclarations.h"
 
 #include "include/core/SkSpan.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkEnumBitMask.h"
+#include "include/private/SkEnumBitMask.h"
+#include "include/private/SkTo.h"
 #include "src/sksl/SkSLAnalysis.h"
 #include "src/sksl/SkSLBuiltinTypes.h"
 #include "src/sksl/SkSLCompiler.h"
@@ -234,11 +234,17 @@ void VarDeclaration::ErrorCheck(const Context& context,
 
     LayoutFlags permittedLayoutFlags = LayoutFlag::kAll;
 
-    // Pixel format modifiers are required on storage textures, and forbidden on other types.
+    // Pixel format modifiers are:
+    //  - Required on dedicated storage textures (writeonly / readwrite).
+    //  - Optional on readonly textures.
+    //  - Forbidden on all other types (samplers, subpass inputs, numeric types, etc.).
     if (baseType->isStorageTexture()) {
         if (!(layout.fFlags & LayoutFlag::kAllPixelFormats)) {
             context.fErrors->error(pos, "storage textures must declare a pixel format");
         }
+    } else if (baseType->isReadOnlyTexture()) {
+        // Readonly textures can be either storage textures (with format) or sampled textures
+        // (without format).
     } else {
         permittedLayoutFlags &= ~LayoutFlag::kAllPixelFormats;
     }

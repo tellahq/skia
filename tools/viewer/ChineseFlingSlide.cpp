@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -10,7 +10,7 @@
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkTextBlob.h"
 #include "include/core/SkTypeface.h"
-#include "src/base/SkRandom.h"
+#include "src/core/SkRandom.h"
 #include "src/core/SkTHash.h"
 #include "src/gpu/MaskFormat.h"
 #include "tools/Resources.h"
@@ -18,6 +18,8 @@
 #include "tools/fonts/FontToolUtils.h"
 #include "tools/timer/TimeUtils.h"
 #include "tools/viewer/Slide.h"
+
+#include <array>
 
 #if defined(SK_GANESH)
 #include "include/gpu/ganesh/GrDirectContext.h"
@@ -48,7 +50,7 @@ class ChineseFlingSlide : public Slide {
 
     sk_sp<SkTypeface>    fTypeface;
     SkFontMetrics        fMetrics;
-    sk_sp<SkTextBlob>    fBlobs[kNumBlobs];
+    std::array<sk_sp<SkTextBlob>, kNumBlobs> fBlobs;
     SkRandom             fRand;
     int                  fIndex = 0;
 
@@ -115,7 +117,7 @@ class ChineseZoomSlide : public Slide {
     bool                 fAfterFirstFrame = false;
     sk_sp<SkTypeface>    fTypeface;
     SkFontMetrics        fMetrics;
-    sk_sp<SkTextBlob>    fBlobs[kNumBlobs];
+    std::array<sk_sp<SkTextBlob>, kNumBlobs> fBlobs;
     SkRandom             fRand;
     SkScalar             fScale = 15;
     SkScalar             fTranslate = 0;
@@ -237,7 +239,7 @@ class ChineseScrollSlide : public Slide {
     static constexpr int kDefaultScrollUnitsPerSecondLog2 = 7;
 
     sk_sp<SkTypeface> fTypeface;
-    sk_sp<SkTextBlob> fBlobs[kNumBlobs];
+    std::array<sk_sp<SkTextBlob>, kNumBlobs> fBlobs;
     float             fVerticalPeriod;
     SkRandom          fRand;
     float             fTranslate = 0;

@@ -12,21 +12,22 @@
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkTypes.h"
+#include "include/private/SkAssert.h" // IWYU pragma: keep
+#include "include/private/SkFloatingPoint.h"
 #include "include/private/SkPathRef.h"
-#include "include/private/base/SkAssert.h" // IWYU pragma: keep
-#include "include/private/base/SkFloatingPoint.h"
-#include "include/private/base/SkSafe32.h"
-#include "include/private/base/SkTArray.h"
-#include "include/private/base/SkTo.h"
-#include "src/base/SkVx.h"
+#include "include/private/SkSafe32.h"
+#include "include/private/SkTArray.h"
+#include "include/private/SkTo.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/core/SkPathData.h"
 #include "src/core/SkPathEnums.h"
 #include "src/core/SkPathPriv.h"
 #include "src/core/SkPathRawShapes.h"
+#include "src/core/SkVx.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -75,7 +76,7 @@ SkPathBuilder& SkPathBuilder::operator=(const SkPath& src) {
         return *this;
     }
 
-    this->addRaw(src.fPathData->raw(src.getFillType(), SkResolveConvexity::kYes));
+    this->addRaw(src.fPathData->raw(src.getFillType(), SkResolveConvexity::kYes), Reserve::kExact);
 
     // These are not part of SkPathRaw, so we set them separately
     fLastMoveIndex = SkPathPriv::FindLastMoveToIndex(fVerbs, fPts.size());
@@ -118,9 +119,9 @@ bool SkPathBuilder::operator==(const SkPathBuilder& o) const {
 }
 
 void SkPathBuilder::incReserve(int extraPtCount, int extraVbCount, int extraCnCount) {
-    fPts.reserve_exact(Sk32_sat_add(fPts.size(), extraPtCount));
-    fVerbs.reserve_exact(Sk32_sat_add(fVerbs.size(), extraVbCount));
-    fConicWeights.reserve_exact(Sk32_sat_add(fConicWeights.size(), extraCnCount));
+    fPts.reserve(Sk32_sat_add(fPts.size(), extraPtCount));
+    fVerbs.reserve(Sk32_sat_add(fVerbs.size(), extraVbCount));
+    fConicWeights.reserve(Sk32_sat_add(fConicWeights.size(), extraCnCount));
 }
 
 std::tuple<SkPoint*, SkScalar*> SkPathBuilder::growForVerbsInPath(const SkPath& path) {
@@ -202,16 +203,23 @@ SkPathBuilder& SkPathBuilder::quadTo(SkPoint pt1, SkPoint pt2) {
 SkPathBuilder& SkPathBuilder::conicTo(SkPoint pt1, SkPoint pt2, SkScalar w) {
     this->ensureMove();
 
+    if (w <= 0) {
+        return this->lineTo(pt2);
+    }
     SkPoint* p = fPts.push_back_n(2);
     p[0] = pt1;
     p[1] = pt2;
     if (w == 1) {
         fVerbs.push_back(SkPathVerb::kQuad);
         fSegmentMask |= kQuad_SkPathSegmentMask;
-    } else {
+    } else if (SkIsFinite(w)) {
         fVerbs.push_back(SkPathVerb::kConic);
         fConicWeights.push_back(w);
         fSegmentMask |= kConic_SkPathSegmentMask;
+    } else {
+        fVerbs.push_back(SkPathVerb::kLine);
+        fVerbs.push_back(SkPathVerb::kLine);
+        fSegmentMask |= kLine_SkPathSegmentMask;
     }
 
     return *this;
@@ -289,7 +297,12 @@ SkPath SkPathBuilder::snapshot(const SkMatrix* mx) const {
         pdata = SkPathData::MakeTransform(*raw, *mx);
     }
     if (pdata && fType != SkPathIsAType::kGeneral) {
-        pdata->setupIsA(fType, fIsA.fDirection, fIsA.fStartIndex);
+        SkASSERT(SkPathPriv::IsAxisAligned(fPts));
+        if (mx->rectStaysRect() && !pdata->bounds().isEmpty()) {
+            auto [dir, start] = SkPathPriv::TransformDirAndStart(
+                    *mx, fType == SkPathIsAType::kRRect, fIsA.fDirection, fIsA.fStartIndex);
+            pdata->setupIsA(fType, dir, start);
+        }
     }
     return SkPath::MakeNullCheck(std::move(pdata), fFillType, fIsVolatile);
 }
@@ -401,7 +414,7 @@ static int build_arc_conics(const SkRect& oval, const SkVector& start, const SkV
                             SkPoint* singlePt) {
     SkMatrix    matrix;
 
-    matrix.setScale(SkScalarHalf(oval.width()), SkScalarHalf(oval.height()));
+    matrix.setScale(oval.width() / 2.f, oval.height() / 2.f);
     matrix.postTranslate(oval.centerX(), oval.centerY());
 
     int count = SkConic::BuildUnitArc(start, stop, dir, &matrix, conics);
@@ -466,8 +479,8 @@ SkPathBuilder& SkPathBuilder::arcTo(const SkRect& oval, SkScalar startAngle, SkS
         return *this;
     }
 
-    SkConic conics[SkConic::kMaxConicsForArc];
-    int count = build_arc_conics(oval, startV, stopV, dir, conics, &singlePt);
+    std::array<SkConic, SkConic::kMaxConicsForArc> conics;
+    int count = build_arc_conics(oval, startV, stopV, dir, conics.data(), &singlePt);
     if (count) {
         this->incReserve(count * 2 + 1);
         const SkPoint& pt = conics[0].fPts[0];
@@ -687,8 +700,14 @@ SkPathIter SkPathBuilder::iter() const {
     return SkPathIter(fPts, fVerbs, fConicWeights);
 }
 
-SkPathBuilder& SkPathBuilder::addRaw(const SkPathRaw& raw) {
-    this->incReserve(raw.points().size(), raw.verbs().size(), raw.conics().size());
+SkPathBuilder& SkPathBuilder::addRaw(const SkPathRaw& raw, Reserve reserve) {
+    if (reserve == Reserve::kGrow) {
+        this->incReserve(raw.points().size(), raw.verbs().size(), raw.conics().size());
+    } else {
+        fPts         .reserve_exact(Sk32_sat_add(fPts.size()         , raw.points().size()));
+        fVerbs       .reserve_exact(Sk32_sat_add(fVerbs.size()       , raw.verbs().size()));
+        fConicWeights.reserve_exact(Sk32_sat_add(fConicWeights.size(), raw.conics().size()));
+    }
 
     for (auto iter = raw.iter(); auto rec = iter.next();) {
         const auto pts = rec->fPoints;
@@ -714,10 +733,16 @@ SkPathBuilder& SkPathBuilder::addRaw(const SkPathRaw& raw) {
     return *this;
 }
 
-SkPathBuilder& SkPathBuilder::addRect(const SkRect& rect, SkPathDirection dir, unsigned index) {
-    const bool wasEmpty = (fSegmentMask == 0);
+// It's tempting to just look at fSegmentMask, but we could have a degenerate path (move,close)
+// before this, which is two verbs but still fSegmentMask == 0.
+static bool is_empty_or_moves(const SkSpan<const SkPathVerb>& verbs) {
+    return verbs.empty() || (verbs.size() == 1 && verbs.back() == SkPathVerb::kMove);
+}
 
-    this->addRaw(SkPathRawShapes::Rect(rect, dir, index));
+SkPathBuilder& SkPathBuilder::addRect(const SkRect& rect, SkPathDirection dir, unsigned index) {
+    const bool wasEmpty = is_empty_or_moves(fVerbs);
+
+    this->addRaw(SkPathRawShapes::Rect(rect, dir, index), Reserve::kGrow);
 
     if (wasEmpty) {
         // now we're a rect
@@ -727,9 +752,9 @@ SkPathBuilder& SkPathBuilder::addRect(const SkRect& rect, SkPathDirection dir, u
 }
 
 SkPathBuilder& SkPathBuilder::addOval(const SkRect& oval, SkPathDirection dir, unsigned index) {
-    const bool wasEmpty = (fSegmentMask == 0);
+    const bool wasEmpty = is_empty_or_moves(fVerbs);
 
-    this->addRaw(SkPathRawShapes::Oval(oval, dir, index));
+    this->addRaw(SkPathRawShapes::Oval(oval, dir, index), Reserve::kGrow);
 
     if (wasEmpty) {
         fType            = SkPathIsAType::kOval;
@@ -755,9 +780,9 @@ SkPathBuilder& SkPathBuilder::addRRect(const SkRRect& rrect, SkPathDirection dir
             break;
     }
 
-    const bool wasEmpty = (fSegmentMask == 0);
+    const bool wasEmpty = is_empty_or_moves(fVerbs);
 
-    this->addRaw(SkPathRawShapes::RRect(rrect, dir, index));
+    this->addRaw(SkPathRawShapes::RRect(rrect, dir, index), Reserve::kGrow);
 
     if (wasEmpty) {
         fType            = SkPathIsAType::kRRect;
@@ -837,7 +862,18 @@ SkPathBuilder& SkPathBuilder::addPath(const SkPath& src, const SkMatrix& matrix,
     fConvexity = SkPathConvexity::kUnknown;
 
     if (SkPath::AddPathMode::kAppend_AddPathMode == mode && !matrix.hasPerspective()) {
-        const int lastMoveToIndex = SkPathPriv::FindLastMoveToIndex(src.verbs(), src.points().size());
+        // If the current builder ends with a moveTo and src starts with one (which is always
+        // true if non-empty), we must discard the builder moveTo in order to maintain
+        // internal consistency after append (no repeating moveTos).
+        if (!fVerbs.empty() && fVerbs.back() == SkPathVerb::kMove && !src.isEmpty()) {
+            SkASSERT(src.verbs().front() == SkPathVerb::kMove);
+            fVerbs.pop_back();
+            fPts.pop_back();
+            SkASSERT(fVerbs.empty() || fVerbs.back() != SkPathVerb::kMove);
+        }
+
+        const int lastMoveToIndex =
+            SkPathPriv::FindLastMoveToIndex(src.verbs(), src.points().size());
         SkASSERT(lastMoveToIndex >= 0);
         fLastMoveIndex = lastMoveToIndex + this->countPoints();
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Google LLC.
+ * Copyright 2019 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -9,7 +9,7 @@
 #define AtlasPathRenderer_DEFINED
 
 #include "include/core/SkRefCnt.h"
-#include "include/private/base/SkTArray.h"
+#include "include/private/SkTArray.h"
 #include "src/core/SkChecksum.h"
 #include "src/core/SkIPoint16.h"
 #include "src/core/SkTHash.h"
@@ -117,12 +117,13 @@ private:
     struct AtlasPathKey {
         void set(const SkMatrix&, const SkPath&);
         bool operator==(const AtlasPathKey& k) const {
-            static_assert(sizeof(*this) == sizeof(uint32_t) * 8);
+            static_assert(sizeof(*this) == sizeof(uint32_t) * 10);
             return !memcmp(this, &k, sizeof(*this));
         }
-        uint32_t fPathGenID;
+        uint64_t fPathGenID;
         float fAffineMatrix[6];
         uint32_t fFillRule;
+        uint32_t fPadding = 0;
 
         using Hash = SkForceDirectHash<AtlasPathKey>;
     };

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Google Inc.
+ * Copyright 2020 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -7,15 +7,17 @@
 
 #include "include/core/SkPath.h"
 #include "include/core/SkPathBuilder.h"
+#include "include/core/SkPathMeasure.h"
 #include "include/core/SkPathTypes.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkRRect.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkScalar.h"
-#include "src/base/SkRandom.h"
 #include "src/core/SkPathPriv.h"
+#include "src/core/SkRandom.h"
 #include "tests/Test.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -253,8 +255,8 @@ DEF_TEST(pathbuilder_addRRect, reporter) {
 
 DEF_TEST(pathbuilder_make, reporter) {
     constexpr int N = 100;
-    SkPathVerb vbs[N];
-    SkPoint pts[N];
+    std::array<SkPathVerb, N> vbs;
+    std::array<SkPoint, N> pts;
 
     SkRandom rand;
     SkPathBuilder b;
@@ -690,15 +692,19 @@ DEF_TEST(SkPathBuilder_transform, reporter) {
     SkPathBuilder b;
 
 #define CONIC_PERSPECTIVE_BUG_FIXED 0
-    static const SkPoint pts[] = {
-        { 0, 0 },  // move
-        { SkIntToScalar(10), SkIntToScalar(10) },  // line
-        { SkIntToScalar(20), SkIntToScalar(10) }, { SkIntToScalar(20), 0 },  // quad
-        { 0, 0 }, { 0, SkIntToScalar(10) }, { SkIntToScalar(1), SkIntToScalar(10) },  // cubic
+    static constexpr auto pts = std::to_array<SkPoint>({
+            SkPoint{                0,                 0}, // move
+            SkPoint{SkIntToScalar(10), SkIntToScalar(10)}, // line
+            SkPoint{SkIntToScalar(20), SkIntToScalar(10)},
+            SkPoint{SkIntToScalar(20),                 0}, // quad
+            SkPoint{                0,                 0},
+            SkPoint{                0, SkIntToScalar(10)},
+            SkPoint{ SkIntToScalar(1), SkIntToScalar(10)}, // cubic
 #if CONIC_PERSPECTIVE_BUG_FIXED
-        { 0, 0 }, { SkIntToScalar(20), SkIntToScalar(10) },  // conic
+            SkPoint{                0,                 0},
+            SkPoint{SkIntToScalar(20), SkIntToScalar(10)}, // conic
 #endif
-    };
+    });
     const int kPtCount = std::size(pts);
 
     b.moveTo(pts[0]);
@@ -1016,6 +1022,44 @@ DEF_TEST(SkPathBuilder_dump, reporter) {
     REPORTER_ASSERT(reporter, str.equals(expected));
 }
 
+DEF_TEST(SkPathBuilder_trailingmove_addpath, reporter) {
+    auto test_with_matrix = [&reporter](const SkMatrix& m) {
+        {
+            // empty src
+            const SkPath src = SkPath();
+            SkPathBuilder b = SkPathBuilder().lineTo(10, 10).moveTo(20, 20);
+
+            const SkPath res = b.addPath(src, m).detach();
+            REPORTER_ASSERT(reporter, !res.isEmpty());
+            REPORTER_ASSERT(reporter, (res.points().back() == SkPoint{20, 20}));
+        }
+
+        {
+            // (implied) moveTo + lineTo
+            const SkPath src = SkPathBuilder().lineTo(100, 100).detach();
+            SkPathBuilder b = SkPathBuilder().lineTo(10, 10).moveTo(20, 20);
+
+            const SkPath res = b.addPath(src, m).detach();
+            REPORTER_ASSERT(reporter, !res.isEmpty());
+            REPORTER_ASSERT(reporter, (res.points().back() != SkPoint{20, 20}));
+        }
+
+        {
+            // moveTo only
+            const SkPath src = SkPathBuilder().moveTo(100, 100).detach();
+            SkPathBuilder b = SkPathBuilder().lineTo(10, 10).moveTo(20, 20);
+
+            const SkPath res = b.addPath(src, m).detach();
+            REPORTER_ASSERT(reporter, !res.isEmpty());
+            REPORTER_ASSERT(reporter, (res.points().back() != SkPoint{20, 20}));
+        }
+    };
+
+    test_with_matrix(SkMatrix::I());
+    // Perspective matrices trigger a different append code path.
+    test_with_matrix(SkMatrix::MakeAll(1,0,0, 0,1,0, .005f,.001f,1));
+}
+
 DEF_TEST(SkPathBuilder_b_463584612, reporter) {
     SkPathBuilder b;
 #ifdef SK_SUPPORT_LEGACY_PATHBUILDER_SETLASTPT
@@ -1032,4 +1076,101 @@ DEF_TEST(SkPathBuilder_b_463584612, reporter) {
 
     SkPath p = builder.detach();
     REPORTER_ASSERT(reporter, !p.isEmpty());
+}
+
+DEF_TEST(SkPathBuilder_conic_semantics, reporter) {
+    {
+        // If w is finite and not one, appends kConic_Verb to verb array;
+        // and pt1, pt2 to SkPoint array; and w to conic weights.
+        SkPath p = SkPathBuilder().conicTo({10, 5}, {10, 10}, 0.5f).detach();
+        REPORTER_ASSERT(reporter, !p.isEmpty());
+        REPORTER_ASSERT(reporter, p.verbs().size() == 2u); // moveTo, conicTo
+        REPORTER_ASSERT(reporter, p.points().size() == 3u);
+        REPORTER_ASSERT(reporter, p.conicWeights().size() == 1u);
+        REPORTER_ASSERT(reporter, p.getSegmentMasks() == SkPath::kConic_SegmentMask);
+    }
+
+    {
+        // If w is one, appends kQuad_Verb to verb array, and
+        // pt1, pt2 to SkPoint array.
+        SkPath p = SkPathBuilder().conicTo({10, 5}, {10, 10}, 1).detach();
+        REPORTER_ASSERT(reporter, !p.isEmpty());
+        REPORTER_ASSERT(reporter, p.verbs().size() == 2u); // moveTo, quadTo
+        REPORTER_ASSERT(reporter, p.points().size() == 3u);
+        REPORTER_ASSERT(reporter, p.conicWeights().empty());
+        REPORTER_ASSERT(reporter, p.getSegmentMasks() == SkPath::kQuad_SegmentMask);
+    }
+
+    {
+        // If w is not finite, appends kLine_Verb twice to verb array, and
+        // pt1, pt2 to SkPoint array.
+        SkPath p = SkPathBuilder().conicTo({10, 5}, {10, 10}, SK_FloatInfinity).detach();
+        REPORTER_ASSERT(reporter, !p.isEmpty());
+        REPORTER_ASSERT(reporter, p.verbs().size() == 3u); // moveTo, lineTo, lineTo
+        REPORTER_ASSERT(reporter, p.points().size() == 3u);
+        REPORTER_ASSERT(reporter, p.conicWeights().empty());
+        REPORTER_ASSERT(reporter, p.getSegmentMasks() == SkPath::kLine_SegmentMask);
+    }
+
+    {
+        // If w is 0, appends kLine_Verb once to verb array, and
+        // pt2 to SkPoint array.
+        SkPath p = SkPathBuilder().conicTo({10, 5}, {10, 10}, 0).detach();
+        REPORTER_ASSERT(reporter, !p.isEmpty());
+        REPORTER_ASSERT(reporter, p.verbs().size() == 2u); // moveTo, lineTo
+        REPORTER_ASSERT(reporter, p.points().size() == 2u);
+        REPORTER_ASSERT(reporter, p.conicWeights().empty());
+        REPORTER_ASSERT(reporter, p.getSegmentMasks() == SkPath::kLine_SegmentMask);
+    }
+}
+
+DEF_TEST(SkPathBuilder_b520944501, reporter) {
+    SkPath path = SkPathBuilder(SkPathFillType::kInverseEvenOdd)
+                          .moveTo(0, 0)
+                          .cubicTo(8.51330895e-18f,
+                                   4.80215861e+30f,
+                                   4.80215347e+30f,
+                                   4.73888368e-38f,
+                                   2.36942783e-38f,
+                                   7.54830852e-30f)
+                          .moveTo(4.80215831e+30f, 1.03969141e-21f)
+                          .conicTo(4.80215831e+30f,
+                                   4.73888368e-38f,
+                                   2.40107915e+30f,
+                                   4.73888368e-38f,
+                                   0.707106769f)
+                          .conicTo(2.0779294e-21f,
+                                   4.73888368e-38f,
+                                   2.0779294e-21f,
+                                   1.03969141e-21f,
+                                   0.707106769f)
+                          .conicTo(2.0779294e-21f,
+                                   2.07938282e-21f,
+                                   2.40107915e+30f,
+                                   2.07938282e-21f,
+                                   0.707106769f)
+                          .conicTo(4.80215831e+30f,
+                                   2.07938282e-21f,
+                                   4.80215831e+30f,
+                                   1.03969141e-21f,
+                                   0.707106769f)
+                          .close()
+                          .detach();
+
+    SkMatrix m;
+    m.setAll(0.0f,
+             0.0f,
+             0.0f,
+             0.0f,
+             0.0f,
+             10159839284371128320.0f,
+             36261335138304000.0f,
+             0.0f,
+             -0.0f);
+
+    // This previously caused an issue where one of the conic weights turned to
+    // 0, causing an assert later. We should be avoiding that.
+    SkPath transformed = path.makeTransform(m);
+    SkPathMeasure meas(transformed, false);
+    (void)meas.getLength();
 }

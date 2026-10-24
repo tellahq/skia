@@ -16,7 +16,7 @@
 #include "include/gpu/GpuTypes.h"
 #include "include/gpu/ganesh/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
-#include "include/private/base/SkDebug.h"
+#include "include/private/SkDebug.h"
 #include "src/core/SkConvertPixels.h"
 #include "src/gpu/ganesh/GrDataUtils.h"
 #include "src/gpu/ganesh/GrPixmap.h"
@@ -51,13 +51,14 @@ static uint32_t pack_unpremul_bgra(SkColor c) {
 
 typedef uint32_t (*PackUnpremulProc)(SkColor);
 
-const struct {
+struct GUnpremul {
     SkColorType         fColorType;
     PackUnpremulProc    fPackProc;
-} gUnpremul[] = {
-    { kRGBA_8888_SkColorType, pack_unpremul_rgba },
-    { kBGRA_8888_SkColorType, pack_unpremul_bgra },
 };
+const auto gUnpremul = std::to_array<GUnpremul>({
+        GUnpremul{kRGBA_8888_SkColorType, pack_unpremul_rgba},
+        GUnpremul{kBGRA_8888_SkColorType, pack_unpremul_bgra},
+});
 
 static void fill_surface(SkSurface* surf, SkColorType colorType, PackUnpremulProc proc) {
     // Don't strictly need a bitmap, but its a handy way to allocate the pixels

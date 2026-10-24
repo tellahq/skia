@@ -227,6 +227,11 @@ typedef struct skcms_CICP {
     uint8_t video_full_range_flag;
 } skcms_CICP;
 
+typedef struct skcms_HAGC {
+    uint32_t       size;
+    const uint8_t* buffer;
+} skcms_HAGC;
+
 typedef struct skcms_ICCProfile {
     const uint8_t* buffer;
 
@@ -259,11 +264,16 @@ typedef struct skcms_ICCProfile {
     // and has_CICP to true.
     skcms_CICP             CICP;
 
+    // If the profile has a valid HAGC tag, skcms_Parse() sets HAGC to that data,
+    // and has_HAGC to true.
+    skcms_HAGC             HAGC;
+
     bool                   has_trc;
     bool                   has_toXYZD50;
     bool                   has_A2B;
     bool                   has_B2A;
     bool                   has_CICP;
+    bool                   has_HAGC;
 } skcms_ICCProfile;
 
 // The sRGB color profile is so commonly used that we offer a canonical skcms_ICCProfile for it.
@@ -296,6 +306,8 @@ SKCMS_API bool skcms_TRCs_AreApproximateInverse(const skcms_ICCProfile* profile,
 // Parse an ICC profile and return true if possible, otherwise return false.
 // Selects an A2B profile (if present) according to priority list (each entry 0-2).
 // The buffer is not copied; it must remain valid as long as the skcms_ICCProfile will be used.
+// The parse will fail if there is not enough padding (typically 1-2 bytes) past the end of the
+// profile for internally optimized read calls.
 SKCMS_API bool skcms_ParseWithA2BPriority(const void*, size_t,
                                           const int priority[], int priorities,
                                           skcms_ICCProfile*);

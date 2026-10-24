@@ -56,6 +56,7 @@ void AddPreferredFeatures(const wgpu::Adapter& adapter, std::vector<wgpu::Featur
     };
 
     addFeature(wgpu::FeatureName::BufferMapExtendedUsages);
+    addFeature(wgpu::FeatureName::DawnAllowUndefinedLoadStoreOp);
     addFeature(wgpu::FeatureName::DawnLoadResolveTexture);
     addFeature(wgpu::FeatureName::DawnPartialLoadResolveTexture);
     addFeature(wgpu::FeatureName::DawnTexelCopyBufferRowAlignment);
@@ -70,6 +71,7 @@ void AddPreferredFeatures(const wgpu::Adapter& adapter, std::vector<wgpu::Featur
     addFeature(wgpu::FeatureName::TimestampQuery);
     addFeature(wgpu::FeatureName::TransientAttachments);
     addFeature(wgpu::FeatureName::Unorm16TextureFormats);
+    addFeature(wgpu::FeatureName::RenderPassRenderArea);
 }
 
 

@@ -1,11 +1,13 @@
 /*
- * Copyright 2021 Google Inc.
+ * Copyright 2021 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
 #include "src/gpu/ganesh/GrThreadSafePipelineBuilder.h"
+
+#include <array>
 
 #if GR_GPU_STATS
 #if defined(GPU_TEST_UTILS)
@@ -16,7 +18,7 @@ using namespace skia_private;
 using Stats = GrThreadSafePipelineBuilder::Stats;
 
 static const char* cache_result_to_str(int i) {
-    const char* kCacheResultStrings[Stats::kNumProgramCacheResults] = {
+    static constexpr std::array<const char*, Stats::kNumProgramCacheResults> kCacheResultStrings = {
         "hits",
         "misses",
         "partials"

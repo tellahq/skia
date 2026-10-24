@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Google Inc.
+ * Copyright 2017 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -22,6 +22,7 @@
 #include "include/effects/SkImageFilters.h"
 #include "tools/ToolUtils.h"
 
+#include <array>
 #include <initializer_list>
 #include <utility>
 
@@ -32,9 +33,13 @@ static sk_sp<SkImage> make_image(SkCanvas* canvas, int direction) {
     SkPaint paint;
     paint.setAntiAlias(true);
 
-    const SkColor colors[] = {
-        SK_ColorRED, SK_ColorBLUE, SK_ColorGREEN, SK_ColorYELLOW, SK_ColorBLACK
-    };
+    const auto colors = std::to_array<SkColor>({
+            SK_ColorRED,
+            SK_ColorBLUE,
+            SK_ColorGREEN,
+            SK_ColorYELLOW,
+            SK_ColorBLACK,
+    });
 
     int width = 25;
     bool xDirection = (direction & 0x1) == 1;

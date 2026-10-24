@@ -1,16 +1,25 @@
 /*
- * Copyright 2025 Google LLC.
+ * Copyright 2025 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
 
+#include <array>
 #include "include/core/SkBitmap.h"
 #include "include/core/SkColorFilter.h"
 #include "include/effects/SkRuntimeEffect.h"
 #include "include/private/SkHdrMetadata.h"
-#include "src/codec/SkCodecPriv.h"
 #include "src/codec/SkHdrAgtmPriv.h"
+
+// Defined locally to avoid pulling in SkCodecPriv.h and general decoder headers.
+#ifndef SkCodecPrintf
+#ifdef SK_PRINT_CODEC_MESSAGES
+    #define SkCodecPrintf SkDebugf
+#else
+    #define SkCodecPrintf(...)
+#endif
+#endif
 
 namespace {
 
@@ -234,40 +243,68 @@ SkColor4f EvaluateColorGainFunction(
 
 void PopulateSlopeFromPCHIP(AdaptiveGlobalToneMap::GainCurve& gainCurve) {
     auto& cp = gainCurve.fControlPoints;
-    size_t N = cp.size();
+    SkASSERT_RELEASE(cp.size() >= AdaptiveGlobalToneMap::GainCurve::kMinNumControlPoints &&
+                     cp.size() <= AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints);
+    int N = static_cast<int>(cp.size());
 
     // Compute the interval width (h) and piecewise linear slope (s).
-    float s[AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints];
-    float h[AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints];
-    for (size_t i = 0; i < N - 1; ++i) {
+    std::array<float, AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints> h;
+    for (int i = 0; i < N - 1; ++i) {
         h[i] = cp[i+1].fX - cp[i].fX;
     }
-    for (size_t i = 0; i < N - 1; ++i) {
-        s[i] = (cp[i+1].fY - cp[i].fY) / h[i];
-    }
-
-    // Handle the left and right control points.
-    if (N >= 3) {
-        // Formula (C.7) and Formula (C.8).
-        cp[0].fM   = ((2 * h[0]   + h[1]  ) * s[0]   - h[0]   * s[1]  ) / (h[0]   + h[1]  );
-        cp[N-1].fM = ((2 * h[N-2] + h[N-3]) * s[N-2] - h[N-2] * s[N-3]) / (h[N-2] + h[N-3]);
-    } else if (N == 2) {
-        cp[0].fM   = s[0];
-        cp[N-1].fM = s[0];
-    } else {
-        cp[0].fM   = 0.f;
-        cp[N-1].fM = 0.f;
-    }
-
-    // Populate internal control points.
-    for (size_t i = 1; i <= N - 2; ++i) {
-        // Formula (C.9).
-        if (s[i-1] * s[i] < 0.f) {
-            cp[i].fM = 0.f;
+    std::array<float, AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints> s;
+    for (int i = 0; i < N - 1; ++i) {
+        // Formula (C.7).
+        if (h[i] != 0.f) {
+          s[i] = (cp[i+1].fY - cp[i].fY) / h[i];
         } else {
-            float num = 3 * (h[i-1] + h[i]) * s[i-1] * s[i];
-            float den = (2 * h[i-1] + h[i]) * s[i-1] + (h[i-1] + 2 * h[i]) * s[i];
-            cp[i].fM = num / den;
+          s[i] = 0.f;
+        }
+    }
+
+    // Common formulation for formulas (C.9) and (C.10).
+    auto three_point_finite_difference = [](float h0, float h1, float s0, float s1) {
+        const float num = (2.f * h0 + h1) * s0 - h0 * s1;
+        const float den = h0 + h1;
+        float m = num / den;
+        if (std::signbit(m) != std::signbit(s0)) {
+            m = 0.f;
+        } else if (std::signbit(m) != std::signbit(s1) && std::abs(m) > 3.f * std::abs(s0)) {
+            m = 3.f * s0;
+        }
+        return m;
+    };
+
+    for (int i = 0; i < N; ++i) {
+        if (i - 1 >= 0 && i + 1 < N && cp[i-1].fX < cp[i].fX && cp[i].fX < cp[i+1].fX) {
+            // Interior point, formula (C.8).
+            if (std::signbit(s[i-1]) != std::signbit(s[i]) || (s[i-1] == 0.f && s[i] == 0.f)) {
+                cp[i].fM = 0.f;
+            } else {
+                const float num = 3 * (h[i-1] + h[i]) * s[i-1] * s[i];
+                const float den = (2 * h[i-1] + h[i]) * s[i-1] + (h[i-1] + 2 * h[i]) * s[i];
+                cp[i].fM = num / den;
+            }
+        } else if (i + 1 < N && cp[i].fX < cp[i+1].fX) {
+            // Left endpoint.
+            if (i + 2 < N && cp[i+1].fX < cp[i+2].fX) {
+                // Three-point finite difference, formula (C.9).
+                cp[i].fM = three_point_finite_difference(h[i], h[i+1], s[i], s[i+1]);
+            } else {
+                // Two-point finite difference.
+                cp[i].fM = s[i];
+            }
+        } else if (i - 1 >= 0 && cp[i-1].fX < cp[i].fX) {
+            // Right endpoint.
+            if (i - 2 >= 0 && cp[i-2].fX < cp[i-1].fX) {
+                // Three-point finite difference, formula (C.10).
+                cp[i].fM = three_point_finite_difference(h[i-1], h[i-2], s[i-1], s[i-2]);
+            } else {
+                // Two-point finite difference.
+                cp[i].fM = s[i-1];
+            }
+        } else {
+            cp[i].fM = 0.f;
         }
     }
 }
@@ -286,7 +323,7 @@ MakeGainCurveXYMImage(const AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap& hatm
     // Write the X, Y, and M values of the control points into the colors of the rows.
     SkBitmap bm32;
     bm32.allocPixels(SkImageInfo::Make(
-            AdaptiveGlobalToneMap::GainCurve::kMaxNumControlPoints, hatm.fAlternateImages.size(),
+            maxNumControlPoints, hatm.fAlternateImages.size(),
             kRGBA_F32_SkColorType, kPremul_SkAlphaType));
     for (size_t a = 0; a < hatm.fAlternateImages.size(); ++a) {
         const auto& alt = hatm.fAlternateImages[a];
@@ -381,11 +418,12 @@ Weighting ComputeWeighting(const AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap&
     size_t N = 0;
 
     // Let H be the sorted list of HDR headrooms.
-    float H[AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap::kMaxNumAlternateImages + 1];
+    std::array<float, AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap::kMaxNumAlternateImages + 1> H;
 
     // Let indices list the index of each entry of H in fAlternateHdrHeadroom. The index for
     // fBaselineHdrHeadroom is Weighting::kInvalidIndex.
-    size_t indices[AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap::kMaxNumAlternateImages + 1];
+    std::array<size_t, AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap::kMaxNumAlternateImages + 1>
+        indices;
     for (size_t i = 0; i < hatm.fAlternateImages.size(); ++i) {
         if (N == i && hatm.fBaselineHdrHeadroom < hatm.fAlternateImages[i].fHdrHeadroom) {
             // Insert the baseline HDR headroom before the indices as they are visited.
@@ -511,7 +549,7 @@ sk_sp<SkColorFilter> MakeColorFilter(
     SkRuntimeShaderBuilder builder(effect);
     builder.uniform("scale_factor") = scaleFactor;
     for (size_t a = 0; a < 2; ++a) {
-        const char* weight_str[2] = {"weight_i", "weight_j"};
+        std::array<const char *, 2> weight_str = {"weight_i", "weight_j"};
         builder.uniform(weight_str[a]) = weighting.fWeight[a];
 
         if (weighting.fWeight[a] == 0.f) {
@@ -520,7 +558,7 @@ sk_sp<SkColorFilter> MakeColorFilter(
         const auto& gain = hatm.fAlternateImages[
             weighting.fAlternateImageIndex[a]].fColorGainFunction;
 
-        const char* mix_rgbx_str[2] = {"mix_rgbx_i", "mix_rgbx_j"};
+        std::array<const char *, 2> mix_rgbx_str = {"mix_rgbx_i", "mix_rgbx_j"};
         builder.uniform(mix_rgbx_str[a]) = SkColor4f({
             gain.fComponentMixing.fRed,
             gain.fComponentMixing.fGreen,
@@ -528,7 +566,7 @@ sk_sp<SkColorFilter> MakeColorFilter(
             0.f,
         });
 
-        const char* mix_Mmcx_str[2] = {"mix_Mmcx_i", "mix_Mmcx_j"};
+        std::array<const char *, 2> mix_Mmcx_str = {"mix_Mmcx_i", "mix_Mmcx_j"};
         builder.uniform(mix_Mmcx_str[a]) = SkColor4f({
             gain.fComponentMixing.fMax,
             gain.fComponentMixing.fMin,
@@ -536,10 +574,11 @@ sk_sp<SkColorFilter> MakeColorFilter(
             0.f,
         });
 
-        const char* curve_texcoord_y_str[2] = {"curve_texcoord_y_i", "curve_texcoord_y_j"};
+        std::array<const char*, 2> curve_texcoord_y_str = {"curve_texcoord_y_i",
+                                                           "curve_texcoord_y_j"};
         builder.uniform(curve_texcoord_y_str[a]) = (weighting.fAlternateImageIndex[a] + 0.5f);
 
-        const char* curve_N_cp_str[2] = {"curve_N_cp_i", "curve_N_cp_j"};
+        std::array<const char *, 2> curve_N_cp_str = {"curve_N_cp_i", "curve_N_cp_j"};
         builder.uniform(curve_N_cp_str[a]) = static_cast<float>(
             gain.fGainCurve.fControlPoints.size());
     }
@@ -795,6 +834,10 @@ SkString AdaptiveGlobalToneMap::toString() const {
     }
     result += "]}";
     return result;
+}
+
+bool AdaptiveGlobalToneMap::isValid() const {
+    return AgtmHelpers::Validate(*this);
 }
 
 }  // namespace skhdr

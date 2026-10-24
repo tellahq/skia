@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google Inc.
+ * Copyright 2018 Google LLC
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
@@ -11,12 +11,13 @@
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkFloatingPoint.h"
+#include "include/private/SkFloatingPoint.h"
 #include "modules/skcms/skcms.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkRasterPipeline.h"
 #include "src/core/SkRasterPipelineOpList.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
 
@@ -29,7 +30,7 @@ static void set_ootf_Y(const SkColorSpace* cs, float* Y) {
     cs->gamutTransformTo(
         SkColorSpace::MakeRGB(SkNamedTransferFn::kLinear, SkNamedGamut::kRec2020).get(),
         &m);
-    constexpr float Y_rec2020[3] = {0.262700f, 0.678000f, 0.059300f};
+    constexpr std::array<float, 3> Y_rec2020 = {0.262700f, 0.678000f, 0.059300f};
     for (int i = 0; i < 3; ++i) {
         Y[i] = 0.f;
         for (int j = 0; j < 3; ++j) {
