@@ -203,7 +203,8 @@ SkCanvas::MCRec::MCRec(SkDevice* device) : fDevice(device) {
     SkASSERT(fDevice);
 }
 
-SkCanvas::MCRec::MCRec(const MCRec* prev) : fDevice(prev->fDevice), fMatrix(prev->fMatrix) {
+SkCanvas::MCRec::MCRec(const MCRec* prev)
+        : fDevice(prev->fDevice), fMatrix(prev->fMatrix), fLayerDepth(prev->fLayerDepth) {
     SkASSERT(fDevice);
 }
 
@@ -507,9 +508,13 @@ int SkCanvas::saveLayer(const SaveLayerRec& rec) {
         SaveLayerStrategy strategy = this->getSaveLayerStrategy(rec);
         fSaveCount += 1;
         this->internalSaveLayer(rec, strategy);
+        // internalSaveLayer() always pushes a record of its own, which restore() pops.
+        fMCRec->fLayerDepth += 1;
     }
     return this->getSaveCount() - 1;
 }
+
+int SkCanvas::getSaveLayerDepth() const { return fMCRec->fLayerDepth; }
 
 int SkCanvas::only_axis_aligned_saveBehind(const SkRect* bounds) {
     if (bounds && !this->getLocalClipBounds().intersects(*bounds)) {

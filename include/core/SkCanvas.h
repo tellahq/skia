@@ -887,6 +887,15 @@ public:
     */
     int getSaveCount() const;
 
+    /** Returns how many saveLayer() calls are open around what is drawn now: zero when draws
+        land on the device the canvas was made with, more when they land in a layer that
+        restore() composites later. A subclass that makes no layer devices (a recording canvas)
+        still counts the saveLayer() calls it records.
+
+        @return  depth of open saveLayer() calls
+    */
+    int getSaveLayerDepth() const;
+
     /** Restores state to SkMatrix and clip values when save(), saveLayer(),
         saveLayerPreserveLCDTextRequests(), or saveLayerAlpha() returned saveCount.
 
@@ -2493,6 +2502,8 @@ private:
         std::unique_ptr<BackImage> fBackImage;
         SkM44 fMatrix;
         int fDeferredSaveCount = 0;
+        // How many saveLayer() calls are open at this record, including its own.
+        int fLayerDepth = 0;
 
         MCRec(SkDevice* device);
         MCRec(const MCRec* prev);
