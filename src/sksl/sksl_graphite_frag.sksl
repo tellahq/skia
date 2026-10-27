@@ -1442,9 +1442,6 @@ $pure half4 sdf_text_coverage_fn(half texColor,
     // and zero threshold is 128/255 = 0.50196078431.
     half dist = 7.96875 * (texColor - 0.50196078431);
 
-    // We may further adjust the distance for gamma correction.
-    dist -= gammaParams.x;
-
     // After the distance is unpacked, we need to correct it by a factor dependent on the
     // current transformation. For general transforms, to determine the amount of correction
     // we multiply a unit vector pointing along the SDF gradient direction by the Jacobian of
@@ -1464,6 +1461,12 @@ $pure half4 sdf_text_coverage_fn(half texColor,
 
     // This gives us a smooth step across approximately one fragment.
     half approxFragWidth = 0.65 * length(grad);
+
+    // We may further adjust the distance for gamma correction. The adjustment is a distance in
+    // device pixels (DistanceFieldAdjustTable computes it for a 0.65 pixel smoothstep), so it is
+    // scaled to the field's texels here; applied in texels, text got bolder or thinner each time
+    // it was drawn from a bigger or smaller field.
+    dist -= gammaParams.x * length(grad);
 
     // TODO: handle aliased rendering
     if (gammaParams.y > 0) {
