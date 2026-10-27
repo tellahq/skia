@@ -63,6 +63,7 @@ void Caps::finishInitialization(const ContextOptions& options) {
     fGlyphCacheTextureMaximumBytes = options.fGlyphCacheTextureMaximumBytes;
     fMinMSAAPathSize = options.fMinimumPathSizeForMSAA;
     fMinDistanceFieldFontSize = options.fMinDistanceFieldFontSize;
+    fScalableText = options.fScalableText;
     fGlyphsAsPathsFontSize = options.fGlyphsAsPathsFontSize;
     fMaxPathAtlasTextureSize = options.fMaxPathAtlasTextureSize;
     fAllowMultipleAtlasTextures = options.fAllowMultipleAtlasTextures;
@@ -416,12 +417,13 @@ sktext::gpu::SubRunControl Caps::getSubRunControl(bool useSDFTForSmallText) cons
 #if !defined(SK_DISABLE_SDF_TEXT)
     return sktext::gpu::SubRunControl{
             this->shaderCaps()->supportsDistanceFieldText(),
-            useSDFTForSmallText,
+            useSDFTForSmallText || fScalableText,
             true, /*ableToUsePerspectiveSDFT*/
             this->minDistanceFieldFontSize(),
             this->glyphsAsPathsFontSize(),
             true, /*forcePathAA*/
-            this->supportBilerpFromGlyphAtlas()};
+            this->supportBilerpFromGlyphAtlas(),
+            /*unhintedSDFT=*/fScalableText};
 #else
     return sktext::gpu::SubRunControl{/*forcePathAA=*/true, this->supportBilerpFromGlyphAtlas()};
 #endif

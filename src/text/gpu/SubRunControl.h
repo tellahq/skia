@@ -44,7 +44,8 @@ public:
     SubRunControl(bool ableToUseSDFT, bool useSDFTForSmallText, bool useSDFTForPerspectiveText,
                   SkScalar min, SkScalar max,
                   bool forcePathAA = false,
-                  bool useBilerp = false);
+                  bool useBilerp = false,
+                  bool unhintedSDFT = false);
 
     // Produce a font, a scale factor from the nominal size to the source space size, and matrix
     // range where this font can be reused.
@@ -78,6 +79,7 @@ private:
 
     const bool fAbleToUseSDFT;
     const bool fAbleToUsePerspectiveSDFT;
+    const bool fUnhintedSDFT;
 #endif
 
     // If true, glyphs drawn as paths are always anti-aliased regardless of any edge hinting.

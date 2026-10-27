@@ -45,11 +45,13 @@ SubRunControl::SubRunControl(
         bool ableToUseSDFT, bool useSDFTForSmallText, bool useSDFTForPerspectiveText,
         SkScalar min, SkScalar max,
         bool forcePathAA,
-        bool useBilerp)
+        bool useBilerp,
+        bool unhintedSDFT)
         : fMinDistanceFieldFontSize{MinSDFTRange(useSDFTForSmallText, min)}
         , fMaxDistanceFieldFontSize{max}
         , fAbleToUseSDFT{ableToUseSDFT}
         , fAbleToUsePerspectiveSDFT{useSDFTForPerspectiveText}
+        , fUnhintedSDFT{unhintedSDFT}
         , fForcePathAA{forcePathAA}
         , fUseBilerp{useBilerp} {
     SkASSERT_RELEASE(0 < min && min <= max);
@@ -128,7 +130,7 @@ SubRunControl::getSDFFont(const SkFont& font, const SkMatrix& viewMatrix,
 
     dfFont.setSize(dfMaskSize);
     dfFont.setForceAutoHinting(false);
-    dfFont.setHinting(SkFontHinting::kNormal);
+    dfFont.setHinting(fUnhintedSDFT ? SkFontHinting::kNone : SkFontHinting::kNormal);
 
     // The sub-pixel position will always happen when transforming to the screen, so we effectively
     // disable the LCD path in StrikeSpec creation by overwriting the edging here.

@@ -535,6 +535,7 @@ protected:
 
     float fMinMSAAPathSize = 0;
     float fMinDistanceFieldFontSize = 18;
+    bool fScalableText = false;
     float fGlyphsAsPathsFontSize = 324;
 
     int fMaxPathAtlasTextureSize = 8192;
