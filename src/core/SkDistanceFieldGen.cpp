@@ -45,7 +45,10 @@ enum NeighborFlags {
 };
 
 // We treat an "edge" as a place where we cross from >=128 to <128, or vice versa, or
-// where we have two non-zero pixels that are <128.
+// where we have two non-zero pixels that are <128. A fully covered or empty pixel is an edge only
+// where it meets a pixel at the other extreme: next to a partly covered pixel the edge lies
+// within that pixel, which is an edge itself, and edge_distance() would put the edge half a
+// pixel from this one wherever in its neighbor it actually is.
 // 'neighborFlags' is used to limit the directions in which we test to avoid indexing
 // outside of the image
 static bool found_edge(const unsigned char* imagePtr, int width, int neighborFlags) {
@@ -68,8 +71,10 @@ static bool found_edge(const unsigned char* imagePtr, int width, int neighborFla
         unsigned char neighborCheck = (neighborVal >> 7);
         SkASSERT(currCheck == 0 || currCheck == 1);
         SkASSERT(neighborCheck == 0 || neighborCheck == 1);
+        const bool extreme = currVal == 0 || currVal == 255;
+        const bool neighborExtreme = neighborVal == 0 || neighborVal == 255;
         // if sharp transition
-        if (currCheck != neighborCheck ||
+        if ((currCheck != neighborCheck && (!extreme || neighborExtreme)) ||
             // or both <128 and >0
             (!currCheck && !neighborCheck && currVal && neighborVal)) {
             return true;
