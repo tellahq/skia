@@ -19,6 +19,7 @@
 #include "src/core/SkSLTypeShared.h"
 #include "src/gpu/graphite/AtlasProvider.h"
 #include "src/gpu/graphite/Attribute.h"
+#include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/ContextUtils.h"
 #include "src/gpu/graphite/DrawOrder.h"
 #include "src/gpu/graphite/DrawParams.h"
@@ -181,6 +182,12 @@ void SDFTextRenderStep::writeUniformsAndTextures(const DrawParams& params,
     U8CPU lum = SkColorSpaceLuminance::computeLuminance(SK_GAMMA_EXPONENT,
                                                         subRunData.luminanceColor());
     gammaAdjustment = dfAdjustTable->getAdjustment(lum, subRunData.useGammaCorrectDistanceTable());
+    // Scalable text keeps the coverage of its outlines: the adjustment is a distance in device
+    // pixels for one text size, so applied to text that scales it thins or bolds glyphs by an
+    // amount that changes with their size and with the size of the field they are drawn from.
+    if (recorder->priv().caps()->scalableText()) {
+        gammaAdjustment = 0;
+    }
 #endif
     SkV2 gammaParams = {gammaAdjustment, subRunData.useGammaCorrectDistanceTable() ? 1.f : 0.f};
     gatherer->writeHalf(gammaParams);

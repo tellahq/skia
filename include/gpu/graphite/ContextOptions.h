@@ -82,6 +82,16 @@ struct SK_API ContextOptions {
     float fMinDistanceFieldFontSize = 18;
 
     /**
+     * Draws text of at least fMinDistanceFieldFontSize device pixels as distance fields on every
+     * surface, as if each had SkSurfaceProps::kUseDeviceIndependentFonts_Flag, and builds those
+     * fields from unhinted outlines. A glyph then keeps one shape at every scale and lands where
+     * its transform puts it, so text that moves or scales does so smoothly; hinted fields shift
+     * a glyph's edges each time the field switches to a bigger or smaller size. The text keeps
+     * the coverage of its outlines: no contrast adjustment thins or bolds it by its luminance.
+     */
+    bool fScalableText = false;
+
+    /**
      * Above this threshold size in device space glyphs are drawn as individual paths.
      */
 #if defined(SK_BUILD_FOR_ANDROID)

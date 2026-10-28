@@ -421,6 +421,7 @@ public:
     float minPathSizeForMSAA() const { return fMinMSAAPathSize; }
     float minDistanceFieldFontSize() const { return fMinDistanceFieldFontSize; }
     float glyphsAsPathsFontSize() const { return fGlyphsAsPathsFontSize; }
+    bool scalableText() const { return fScalableText; }
 
     size_t glyphCacheTextureMaximumBytes() const { return fGlyphCacheTextureMaximumBytes; }
     int maxPathAtlasTextureSize() const { return fMaxPathAtlasTextureSize; }
@@ -535,6 +536,7 @@ protected:
 
     float fMinMSAAPathSize = 0;
     float fMinDistanceFieldFontSize = 18;
+    bool fScalableText = false;
     float fGlyphsAsPathsFontSize = 324;
 
     int fMaxPathAtlasTextureSize = 8192;
