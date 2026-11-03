@@ -46,12 +46,12 @@ public:
                          const sk_sp<SkImageFilter> inputs[],
                          int inputCount,
                          bool restrictOutputToInputBounds,
-                         bool scalesWithMatrix)
+                         bool transformsWithMatrix)
             : SkImageFilter_Base(inputs, inputCount)
             , fRuntimeEffectBuilder(builder)
             , fMaxSampleRadius(maxSampleRadius)
             , fRestrictOutputToInputBounds(restrictOutputToInputBounds)
-            , fScalesWithMatrix(scalesWithMatrix) {
+            , fTransformsWithMatrix(transformsWithMatrix) {
         SkASSERT(maxSampleRadius >= 0.f);
         fChildShaderNames.reserve_exact(inputCount);
         for (int i = 0; i < inputCount; i++) {
@@ -72,11 +72,11 @@ private:
     // Currently there is no way for a client to specify the semantics of geometric uniforms that
     // should respond to the canvas matrix. Forcing translate-only is a hammer that lets the output
     // be correct at the expense of resolution when there's a lot of scaling. See skbug.com/40044507.
-    // When the client says the shader's uniforms are local ('fScalesWithMatrix'), the layer may
-    // scale with the canvas: the shader is evaluated in parameter space either way.
+    // When the client says the shader's uniforms are local ('fTransformsWithMatrix'), the layer
+    // may take the canvas' whole matrix: the shader is evaluated in parameter space either way.
     MatrixCapability onGetCTMCapability() const override {
-        return fScalesWithMatrix ? MatrixCapability::kScaleTranslate
-                                 : MatrixCapability::kTranslate;
+        return fTransformsWithMatrix ? MatrixCapability::kComplex
+                                     : MatrixCapability::kTranslate;
     }
 
     skif::FilterResult onFilterImage(const skif::Context&) const override;
@@ -104,7 +104,7 @@ private:
     STArray<1, SkString> fChildShaderNames;
     float fMaxSampleRadius;
     bool fRestrictOutputToInputBounds;
-    bool fScalesWithMatrix;
+    bool fTransformsWithMatrix;
 };
 
 sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder& builder,
@@ -132,7 +132,7 @@ sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder&
                                                    const sk_sp<SkImageFilter> inputs[],
                                                    int inputCount,
                                                    bool restrictOutputToInputBounds,
-                                                   bool scalesWithMatrix) {
+                                                   bool transformsWithMatrix) {
     if (maxSampleRadius < 0.f) {
         return nullptr; // invalid sample radius
     }
@@ -159,7 +159,7 @@ sk_sp<SkImageFilter> SkImageFilters::RuntimeShader(const SkRuntimeShaderBuilder&
     return sk_sp<SkImageFilter>(new SkRuntimeImageFilter(builder, maxSampleRadius, childShaderNames,
                                                          inputs, inputCount,
                                                          restrictOutputToInputBounds,
-                                                         scalesWithMatrix));
+                                                         transformsWithMatrix));
 }
 
 void SkRegisterRuntimeImageFilterFlattenable() {
@@ -232,9 +232,9 @@ sk_sp<SkFlattenable> SkRuntimeImageFilter::CreateProc(SkReadBuffer& buffer) {
         restrictOutputToInputBounds = buffer.readBool();
     }
 
-    bool scalesWithMatrix = false; // default before it was exposed in the factory
-    if (!buffer.isVersionLT(SkPicturePriv::kRuntimeImageFilterScalesWithMatrix)) {
-        scalesWithMatrix = buffer.readBool();
+    bool transformsWithMatrix = false; // default before it was exposed in the factory
+    if (!buffer.isVersionLT(SkPicturePriv::kRuntimeImageFilterTransformsWithMatrix)) {
+        transformsWithMatrix = buffer.readBool();
     }
 
     if (!buffer.isValid()) {
@@ -243,7 +243,7 @@ sk_sp<SkFlattenable> SkRuntimeImageFilter::CreateProc(SkReadBuffer& buffer) {
 
     return SkImageFilters::RuntimeShader(builder, maxSampleRadius, childShaderNames.data(),
                                          common.inputs(), common.inputCount(),
-                                         restrictOutputToInputBounds, scalesWithMatrix);
+                                         restrictOutputToInputBounds, transformsWithMatrix);
 }
 
 void SkRuntimeImageFilter::flatten(SkWriteBuffer& buffer) const {
@@ -261,7 +261,7 @@ void SkRuntimeImageFilter::flatten(SkWriteBuffer& buffer) const {
 
     buffer.writeScalar(fMaxSampleRadius);
     buffer.writeBool(fRestrictOutputToInputBounds);
-    buffer.writeBool(fScalesWithMatrix);
+    buffer.writeBool(fTransformsWithMatrix);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////

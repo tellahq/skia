@@ -474,17 +474,17 @@ public:
                                               int inputCount,
                                               bool restrictOutputToInputBounds = false) {
         return RuntimeShader(builder, maxSampleRadius, childShaderNames, inputs, inputCount,
-                             restrictOutputToInputBounds, /*scalesWithMatrix=*/false);
+                             restrictOutputToInputBounds, /*transformsWithMatrix=*/false);
     }
 
     /**
-     * As above, but if 'scalesWithMatrix' is true the filter is evaluated in a layer that is
-     * scaled (and translated) with the canvas' matrix, rather than only translated. By default
-     * Skia evaluates a runtime shader filter at the layer's unscaled resolution and resamples the
-     * result to the device, since it cannot know whether the shader's uniforms are measured in
-     * pixels. The shader is always evaluated in its local (parameter) coordinates, so set this
-     * when its uniforms and the coordinates it samples its children at are local too: it is then
-     * shaded at device resolution under a scale, as a blur or color filter is.
+     * As above, but if 'transformsWithMatrix' is true the filter is evaluated in a layer that takes
+     * the canvas' whole matrix (scale, rotation and skew), rather than only its translation. By
+     * default Skia evaluates a runtime shader filter at the layer's unscaled resolution and
+     * resamples the result to the device, since it cannot know whether the shader's uniforms are
+     * measured in pixels. The shader is always evaluated in its local (parameter) coordinates, so
+     * set this when its uniforms and the coordinates it samples its children at are local too: it
+     * is then shaded at device resolution under any matrix.
      */
     static sk_sp<SkImageFilter> RuntimeShader(const SkRuntimeEffectBuilder& builder,
                                               SkScalar maxSampleRadius,
@@ -492,7 +492,7 @@ public:
                                               const sk_sp<SkImageFilter> inputs[],
                                               int inputCount,
                                               bool restrictOutputToInputBounds,
-                                              bool scalesWithMatrix);
+                                              bool transformsWithMatrix);
 
     /**
      * A filter whose output the client draws. 'proc' is called with 'context', a transparent
