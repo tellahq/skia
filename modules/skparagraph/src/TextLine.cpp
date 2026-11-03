@@ -262,8 +262,10 @@ void TextLine::ensureTextBlobCachePopulated() {
         // Most common and most simple case
         const auto& style = fOwner->block(fBlockRange.start).fStyle;
         const auto& run = fOwner->run(fRunsInVisualOrder[0]);
+        // To the end of the glyphs, past the line's width by any trailing letter spacing
+        // (Paragraph::visit reports it as the run's advance)
         auto clip = SkRect::MakeXYWH(0.0f, this->sizes().runTop(&run, this->fAscentStyle),
-                                     fAdvance.fX,
+                                     this->glyphsEnd(),
                                      run.calculateHeight(this->fAscentStyle, this->fDescentStyle));
 
         auto& start = fOwner->cluster(fClusterRange.start);
