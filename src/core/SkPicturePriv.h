@@ -175,6 +175,7 @@ public:
         kSerializeStableKeys                = 108,
         kWorkingColorSpaceOutput            = 109,
         kRuntimeImageFilterRestrictedOutput = 110,
+        kRuntimeImageFilterTransformsWithMatrix = 111,
 
         // Only SKPs within the min/current picture version range (inclusive) can be read.
         //
@@ -199,7 +200,7 @@ public:
         //
         // Contact the Infra Gardener if the above steps do not work for you.
         kMin_Version     = kPictureShaderFilterParam_Version,
-        kCurrent_Version = kRuntimeImageFilterRestrictedOutput
+        kCurrent_Version = kRuntimeImageFilterTransformsWithMatrix
     };
 };
 
