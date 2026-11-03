@@ -2076,6 +2076,18 @@ FilterResult FilterResult::Builder::drawShader(sk_sp<SkShader> shader,
     return surface.snap();
 }
 
+FilterResult FilterResult::Builder::drawInParameterSpace(
+        const std::function<void(SkCanvas*)>& draw,
+        const LayerSpace<SkIRect>& outputBounds) const {
+    SkASSERT(!outputBounds.isEmpty()); // Should have been rejected before we created shaders
+    AutoSurface surface{fContext, outputBounds, PixelBoundary::kTransparent,
+                        /*renderInParameterSpace=*/true};
+    if (surface) {
+        draw(surface.canvas());
+    }
+    return surface.snap();
+}
+
 FilterResult FilterResult::Builder::merge() {
     // merge() could return an empty image on 0 added inputs, but this should have been caught
     // earlier and routed to SkImageFilters::Empty() instead.
