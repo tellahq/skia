@@ -113,6 +113,7 @@ TextLine::TextLine(ParagraphImpl* owner,
         , fOffset(offset)
         , fShift(0.0)
         , fWidthWithSpaces(widthWithSpaces)
+        , fTrailingLetterSpacing(0.0)
         , fEllipsis(nullptr)
         , fSizes(sizes)
         , fHasBackground(false)
@@ -175,6 +176,15 @@ TextLine::TextLine(ParagraphImpl* owner,
         }
     }
 
+    if (owner->paragraphStyle().getLetterSpacingBetweenCharacters()) {
+        if (fClusterRange.width() > 0) {
+            fTrailingLetterSpacing = owner->cluster(fClusterRange.end - 1).trailingLetterSpacing();
+            fAdvance.fX -= fTrailingLetterSpacing;
+            fWidthWithSpaces -= fTrailingLetterSpacing;
+        }
+        return;
+    }
+
     // TODO: This is the fix for flutter. Must be removed...
     for (auto cluster = &start; cluster <= &end; ++cluster) {
         if (!cluster->run().isPlaceholder() && !cluster->run().isCursiveScript()) {
@@ -182,6 +192,13 @@ TextLine::TextLine(ParagraphImpl* owner,
             break;
         }
     }
+}
+
+SkRect TextLine::withoutTrailingLetterSpacing(SkRect clip) const {
+    if (fTrailingLetterSpacing != 0 && SkScalarNearlyEqual(clip.fRight, this->glyphsEnd(), 0.01f)) {
+        clip.fRight = fAdvance.fX;
+    }
+    return clip;
 }
 
 void TextLine::paint(ParagraphPainter* painter, SkScalar x, SkScalar y) {
@@ -245,8 +262,10 @@ void TextLine::ensureTextBlobCachePopulated() {
         // Most common and most simple case
         const auto& style = fOwner->block(fBlockRange.start).fStyle;
         const auto& run = fOwner->run(fRunsInVisualOrder[0]);
+        // To the end of the glyphs, past the line's width by any trailing letter spacing
+        // (Paragraph::visit reports it as the run's advance)
         auto clip = SkRect::MakeXYWH(0.0f, this->sizes().runTop(&run, this->fAscentStyle),
-                                     fAdvance.fX,
+                                     this->glyphsEnd(),
                                      run.calculateHeight(this->fAscentStyle, this->fDescentStyle));
 
         auto& start = fOwner->cluster(fClusterRange.start);
@@ -399,7 +418,8 @@ void TextLine::paintBackground(ParagraphPainter* painter,
                                const TextStyle& style,
                                const ClipContext& context) const {
     if (style.hasBackground()) {
-        painter->drawRect(context.clip.makeOffset(this->offset() + SkPoint::Make(x, y)),
+        painter->drawRect(this->withoutTrailingLetterSpacing(context.clip)
+                                  .makeOffset(this->offset() + SkPoint::Make(x, y)),
                           style.getBackgroundPaintOrID());
     }
 }
@@ -579,7 +599,9 @@ void TextLine::createEllipsis(SkScalar maxWidth, const SkString& ellipsis, bool)
     // Replace some clusters with the ellipsis
     // Go through the clusters in the reverse logical order
     // taking off cluster by cluster until the ellipsis fits
-    SkScalar width = fAdvance.fX;
+    // (the ellipsis follows the spacing after the last cluster it keeps, and ends the line itself)
+    SkScalar width = this->glyphsEnd();
+    fTrailingLetterSpacing = 0;
     RunIndex lastRun = EMPTY_RUN;
     std::unique_ptr<Run> ellipsisRun;
     for (auto clusterIndex = fGhostClusterRange.end; clusterIndex > fGhostClusterRange.start; --clusterIndex) {
@@ -921,15 +943,16 @@ TextLine::ClipContext TextLine::measureTextInsideOneRun(TextRange textRange,
     result.clip.offset(textStartInLine, 0);
     //SkDebugf("@%f[%f:%f)\n", textStartInLine, result.clip.fLeft, result.clip.fRight);
 
-    if (compareRound(result.clip.fRight, fAdvance.fX, fOwner->getApplyRoundingHack()) > 0 && !includeGhostSpaces) {
+    // Clip at the end of the glyphs, which is past the line's width by any trailing letter spacing
+    if (compareRound(result.clip.fRight, this->glyphsEnd(), fOwner->getApplyRoundingHack()) > 0 && !includeGhostSpaces) {
         // There are few cases when we need it.
         // The most important one: we measure the text with spaces at the end (or at the beginning in RTL)
         // and we should ignore these spaces
         if (fOwner->paragraphStyle().getTextDirection() == TextDirection::kLtr) {
             // We only use this member for LTR
-            result.fExcludedTrailingSpaces = std::max(result.clip.fRight - fAdvance.fX, 0.0f);
+            result.fExcludedTrailingSpaces = std::max(result.clip.fRight - this->glyphsEnd(), 0.0f);
             result.clippingNeeded = true;
-            result.clip.fRight = fAdvance.fX;
+            result.clip.fRight = this->glyphsEnd();
         }
     }
 
@@ -1148,10 +1171,12 @@ void TextLine::iterateThroughVisualRuns(bool includingGhostSpaces, const RunVisi
         }
     }
 
-    if (!includingGhostSpaces && compareRound(totalWidth, this->width(), fOwner->getApplyRoundingHack()) != 0) {
+    // The runs reach the end of the glyphs, past the line's width by any trailing letter spacing
+    auto glyphsWidth = this->width() + fTrailingLetterSpacing;
+    if (!includingGhostSpaces && compareRound(totalWidth, glyphsWidth, fOwner->getApplyRoundingHack()) != 0) {
     // This is a very important assert!
     // It asserts that 2 different ways of calculation come with the same results
-        SkDEBUGFAILF("ASSERT: %f != %f\n", totalWidth, this->width());
+        SkDEBUGFAILF("ASSERT: %f != %f\n", totalWidth, glyphsWidth);
     }
 }
 
@@ -1256,6 +1281,7 @@ void TextLine::getRectsForRange(TextRange textRange0,
                     intersect, run, runOffsetInLine, 0, true, TextAdjustment::GraphemeGluster);
             SkRect clip = context.clip;
             clip.offset(lineContext.fTextShift - context.fTextShift, 0);
+            clip = this->withoutTrailingLetterSpacing(clip);
 
             switch (rectHeightStyle) {
                 case RectHeightStyle::kMax:

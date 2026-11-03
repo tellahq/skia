@@ -284,7 +284,8 @@ public:
             , fEnd()
             , fWidth()
             , fHeight()
-            , fHalfLetterSpacing(0.0) {}
+            , fHalfLetterSpacing(0.0)
+            , fTrailingLetterSpacing(0.0) {}
 
     Cluster(ParagraphImpl* owner,
             RunIndex runIndex,
@@ -329,6 +330,10 @@ public:
     void setHalfLetterSpacing(SkScalar halfLetterSpacing) { fHalfLetterSpacing = halfLetterSpacing; }
     SkScalar getHalfLetterSpacing() const { return fHalfLetterSpacing; }
 
+    // The letter spacing added after this cluster's last glyph (0 where none was applied)
+    void setTrailingLetterSpacing(SkScalar spacing) { fTrailingLetterSpacing = spacing; }
+    SkScalar trailingLetterSpacing() const { return fTrailingLetterSpacing; }
+
     TextRange textRange() const { return fTextRange; }
 
     RunIndex runIndex() const { return fRunIndex; }
@@ -364,6 +369,7 @@ private:
     SkScalar fWidth;
     SkScalar fHeight;
     SkScalar fHalfLetterSpacing;
+    SkScalar fTrailingLetterSpacing;
 
     bool fIsWhiteSpaceBreak;
     bool fIsIntraWordBreak;

@@ -63,7 +63,8 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
         if (cluster->isHardBreak()) {
         } else if (
                 // TODO: Trying to deal with flutter rounding problem. Must be removed...
-                SkScalar width = fWords.width() + fClusters.width() + cluster->width();
+                SkScalar width = fWords.width() + fClusters.width() + cluster->width() -
+                                 this->trailingLetterSpacing(cluster);
                 breaker.breakLine(width)) {
             if (cluster->isWhitespaceBreak()) {
                 // It's the end of the word
@@ -93,6 +94,7 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
             // Walk further to see if there is a too long word, cluster or glyph
             SkScalar nextWordLength = fClusters.width();
             SkScalar nextShortWordLength = nextWordLength;
+            SkScalar nextWordTrailingLetterSpacing = 0;
             for (auto further = cluster; further != endOfClusters; ++further) {
                 if (further->isSoftBreak() || further->isHardBreak() || further->isWhitespaceBreak()) {
                     break;
@@ -113,8 +115,10 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
                     nextWordLength = std::max(nextWordLength, further->width());
                 } else {
                     nextWordLength += further->width();
+                    nextWordTrailingLetterSpacing = this->trailingLetterSpacing(further);
                 }
             }
+            nextWordLength -= nextWordTrailingLetterSpacing;
             if (nextWordLength > maxWidth) {
                 if (nextNonBreakingSpace != nullptr) {
                     // We only get here if the non-breaking space improves our situation
@@ -143,7 +147,7 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
                 }
             }
 
-            if (cluster->width() > maxWidth) {
+            if (cluster->width() - this->trailingLetterSpacing(cluster) > maxWidth) {
                 fClusters.extend(cluster);
                 fTooLongCluster = true;
                 fTooLongWord = true;
@@ -230,7 +234,7 @@ SkScalar TextWrapper::getClustersTrimmedWidth() {
         }
         if (trailingSpaces) {
             if (!cluster->isWhitespaceBreak()) {
-                width += cluster->trimmedWidth(cluster->endPos());
+                width += cluster->trimmedWidth(cluster->endPos()) - this->trailingLetterSpacing(cluster);
                 trailingSpaces = false;
             }
             continue;
@@ -290,12 +294,15 @@ void TextWrapper::breakTextIntoLines(ParagraphImpl* parent,
     auto unlimitedLines = maxLines == std::numeric_limits<size_t>::max();
     auto endlessLine = !SkIsFinite(maxWidth);
     auto hasEllipsis = parent->paragraphStyle().ellipsized();
+    fLetterSpacingBetweenCharacters = parent->paragraphStyle().getLetterSpacingBetweenCharacters();
 
     auto disableFirstAscent = parent->paragraphStyle().getTextHeightBehavior() & TextHeightBehavior::kDisableFirstAscent;
     auto disableLastDescent = parent->paragraphStyle().getTextHeightBehavior() & TextHeightBehavior::kDisableLastDescent;
     bool firstLine = true; // We only interested in fist line if we have to disable the first ascent
 
     SkScalar softLineMaxIntrinsicWidth = 0;
+    // The letter spacing after the soft line's last character, left out of its intrinsic width
+    SkScalar softLineTrailingLetterSpacing = 0;
     fEndLine = TextStretch(span.data(), span.data(), parent->strutForceHeight());
     auto start = span.data();
     auto end = start + span.size() - 1;
@@ -399,9 +406,19 @@ void TextWrapper::breakTextIntoLines(ParagraphImpl* parent,
 
         softLineMaxIntrinsicWidth += widthWithSpaces;
 
-        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth);
+        // Joined with the next soft line, this line's last spacing goes between characters
+        SkScalar lineTrailingLetterSpacing = 0;
+        for (auto cluster = startLine; cluster > fEndLine.startCluster(); --cluster) {
+            if (!(cluster - 1)->isHardBreak()) {
+                lineTrailingLetterSpacing = this->trailingLetterSpacing(cluster - 1);
+                break;
+            }
+        }
+        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth - lineTrailingLetterSpacing);
+        softLineTrailingLetterSpacing = lineTrailingLetterSpacing;
         if (fHardLineBreak) {
             softLineMaxIntrinsicWidth = 0;
+            softLineTrailingLetterSpacing = 0;
         }
         // Start a new line
         fHeight += lineHeight;
@@ -430,36 +447,51 @@ void TextWrapper::breakTextIntoLines(ParagraphImpl* parent,
     // TODO: make it a case of a normal flow
     if (fEndLine.endCluster() != nullptr) {
         auto lastWordLength = 0.0f;
+        // Letter spacing after the last word's last character, left out of its length
+        auto lastWordTrailingLetterSpacing = 0.0f;
         auto cluster = fEndLine.endCluster();
         while (cluster != end || cluster->endPos() < end->endPos()) {
             fExceededMaxLines = true;
             if (cluster->isHardBreak()) {
                 // Hard line break ends the word and the line
-                fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth);
+                fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth,
+                                              softLineMaxIntrinsicWidth - softLineTrailingLetterSpacing);
                 softLineMaxIntrinsicWidth = 0;
-                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, lastWordLength);
+                softLineTrailingLetterSpacing = 0;
+                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth,
+                                              lastWordLength - lastWordTrailingLetterSpacing);
                 lastWordLength = 0;
+                lastWordTrailingLetterSpacing = 0;
             } else if (cluster->isWhitespaceBreak()) {
                 // Whitespaces end the word
                 softLineMaxIntrinsicWidth += cluster->width();
-                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, lastWordLength);
+                softLineTrailingLetterSpacing = this->trailingLetterSpacing(cluster);
+                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth,
+                                              lastWordLength - lastWordTrailingLetterSpacing);
                 lastWordLength = 0;
+                lastWordTrailingLetterSpacing = 0;
             } else if (cluster->run().isPlaceholder()) {
                 // Placeholder ends the previous word and creates a separate one
-                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, lastWordLength);
+                fMinIntrinsicWidth = std::max(fMinIntrinsicWidth,
+                                              lastWordLength - lastWordTrailingLetterSpacing);
                 // Placeholder width now counts in fMinIntrinsicWidth
                 softLineMaxIntrinsicWidth += cluster->width();
+                softLineTrailingLetterSpacing = 0;
                 fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, cluster->width());
                 lastWordLength = 0;
+                lastWordTrailingLetterSpacing = 0;
             } else {
                 // Nothing out of ordinary - just add this cluster to the word and to the line
                 softLineMaxIntrinsicWidth += cluster->width();
                 lastWordLength += cluster->width();
+                softLineTrailingLetterSpacing = this->trailingLetterSpacing(cluster);
+                lastWordTrailingLetterSpacing = softLineTrailingLetterSpacing;
             }
             ++cluster;
         }
-        fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, lastWordLength);
-        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth);
+        fMinIntrinsicWidth = std::max(fMinIntrinsicWidth, lastWordLength - lastWordTrailingLetterSpacing);
+        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth,
+                                      softLineMaxIntrinsicWidth - softLineTrailingLetterSpacing);
 
         if (parent->lines().empty()) {
             // In case we could not place even a single cluster on the line

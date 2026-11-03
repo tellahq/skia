@@ -8588,6 +8588,92 @@ UNIX_ONLY_TEST(SkParagraph_ArabicWithLetterSpacingWhitespacesAsCSS, reporter) {
     }
 }
 
+UNIX_ONLY_TEST(SkParagraph_LetterSpacingBetweenCharacters, reporter) {
+    sk_sp<ResourceFontCollection> fontCollection = sk_make_sp<ResourceFontCollection>();
+    SKIP_IF_FONTS_NOT_FOUND(reporter, fontCollection)
+    TestCanvas canvas("SkParagraph_LetterSpacingBetweenCharacters.png");
+    const char* text = "Hello";
+    const size_t len = strlen(text);
+    const SkScalar width = TestCanvasWidth;
+
+    auto layoutText = [&](const char* text, SkScalar letterSpacing, TextAlign align,
+                          SkScalar layoutWidth) {
+        ParagraphStyle paragraph_style;
+        paragraph_style.setTextAlign(align);
+        paragraph_style.setLetterSpacingBetweenCharacters(true);
+        ParagraphBuilderImpl builder(paragraph_style, fontCollection, get_unicode());
+        TextStyle text_style;
+        text_style.setFontFamilies({SkString("Roboto")});
+        text_style.setFontSize(40);
+        text_style.setLetterSpacing(letterSpacing);
+        SkPaint background;
+        background.setColor(SK_ColorLTGRAY);
+        text_style.setBackgroundColor(background);
+        builder.pushStyle(text_style);
+        builder.addText(text, strlen(text));
+        builder.pop();
+        auto paragraph = builder.Build();
+        paragraph->layout(layoutWidth);
+        // Painting checks that the runs reach the line's width plus its trailing spacing
+        paragraph->paint(canvas.get(), 0, 0);
+        return paragraph;
+    };
+    auto layout = [&](SkScalar letterSpacing, TextAlign align, SkScalar layoutWidth) {
+        return layoutText(text, letterSpacing, align, layoutWidth);
+    };
+    auto box = [&](Paragraph* paragraph, size_t start, size_t end) {
+        auto boxes = paragraph->getRectsForRange(start, end, RectHeightStyle::kTight, RectWidthStyle::kTight);
+        SkRect rect = SkRect::MakeEmpty();
+        for (auto& b : boxes) {
+            rect.join(b.rect);
+        }
+        return rect;
+    };
+
+    auto unspaced = layout(0, TextAlign::kLeft, width);
+    auto unspacedWidth = unspaced->getLongestLine();
+    auto lastLetter = box(unspaced.get(), len - 1, len).width();
+
+    for (SkScalar letterSpacing : {10.0f, -4.0f}) {
+        // The spacing goes between the letters only: none before the first or after the last
+        auto spacedWidth = unspacedWidth + (len - 1) * letterSpacing;
+        for (auto align : {TextAlign::kLeft, TextAlign::kCenter, TextAlign::kRight}) {
+            auto paragraph = layout(letterSpacing, align, width);
+            std::vector<LineMetrics> metrics;
+            paragraph->getLineMetrics(metrics);
+            REPORTER_ASSERT(reporter, metrics.size() == 1);
+            auto left = align == TextAlign::kLeft     ? 0
+                        : align == TextAlign::kCenter ? (width - spacedWidth) / 2
+                                                      : width - spacedWidth;
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(metrics[0].fWidth, spacedWidth, EPSILON100));
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(metrics[0].fLeft, left, EPSILON100));
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(paragraph->getLongestLine(), spacedWidth, EPSILON100));
+            auto whole = box(paragraph.get(), 0, len);
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(whole.fLeft, left, EPSILON100));
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(whole.fRight, left + spacedWidth, EPSILON100));
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(box(paragraph.get(), len - 1, len).width(), lastLetter, EPSILON100));
+        }
+        auto paragraph = layout(letterSpacing, TextAlign::kLeft, width);
+        REPORTER_ASSERT(reporter, SkScalarNearlyEqual(paragraph->getMaxIntrinsicWidth(), spacedWidth, EPSILON100));
+        // Text with whitespace goes through the line breaker, which measures intrinsic widths itself
+        for (const char* spacedText : {"Hello world", "Hi\nHello world"}) {
+            auto wrapped = layoutText(spacedText, letterSpacing, TextAlign::kLeft, width);
+            std::vector<LineMetrics> lines;
+            wrapped->getLineMetrics(lines);
+            SkScalar longest = 0;
+            for (auto& line : lines) {
+                longest = std::max(longest, (SkScalar)line.fWidth);
+            }
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(wrapped->getMaxIntrinsicWidth(), longest, EPSILON100));
+        }
+        // A line exactly as wide as the spaced text still fits it
+        auto exact = layout(letterSpacing, TextAlign::kLeft, spacedWidth + 0.01f);
+        std::vector<LineMetrics> metrics;
+        exact->getLineMetrics(metrics);
+        REPORTER_ASSERT(reporter, SkScalarNearlyEqual(metrics[0].fWidth, spacedWidth, EPSILON100));
+    }
+}
+
 // Soft hyphen (U+00AD) tests
 // When a line breaks at a soft hyphen position, a visible hyphen should be rendered.
 // When NOT at a line break, soft hyphens should remain invisible (zero-width).

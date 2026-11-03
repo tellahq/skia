@@ -198,6 +198,7 @@ SkScalar Run::addLetterSpacesEvenly(SkScalar space, Cluster* cluster) {
     // Increment the cluster width
     cluster->space(shift);
     cluster->setHalfLetterSpacing(space / 2);
+    cluster->setTrailingLetterSpacing(cluster->endPos() > cluster->startPos() ? space : 0);
 
     return shift;
 }

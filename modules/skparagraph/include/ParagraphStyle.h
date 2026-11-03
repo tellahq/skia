@@ -85,7 +85,8 @@ struct ParagraphStyle {
                this->fDefaultTextStyle == rhs.fDefaultTextStyle &&
                this->fReplaceTabCharacters == rhs.fReplaceTabCharacters &&
                this->fFakeMissingFontStyles == rhs.fFakeMissingFontStyles &&
-               this->fRenderSoftHyphens == rhs.fRenderSoftHyphens;
+               this->fRenderSoftHyphens == rhs.fRenderSoftHyphens &&
+               this->fLetterSpacingBetweenCharacters == rhs.fLetterSpacingBetweenCharacters;
     }
 
     const StrutStyle& getStrutStyle() const { return fStrutStyle; }
@@ -137,6 +138,12 @@ struct ParagraphStyle {
     bool getRenderSoftHyphens() const { return fRenderSoftHyphens; }
     void setRenderSoftHyphens(bool value) { fRenderSoftHyphens = value; }
 
+    // Letter spacing goes only between characters, as in design tools: a line neither starts
+    // half a spacing in nor counts a spacing after its last character (for its width, alignment,
+    // wrapping and the boxes getRectsForRange returns).
+    bool getLetterSpacingBetweenCharacters() const { return fLetterSpacingBetweenCharacters; }
+    void setLetterSpacingBetweenCharacters(bool value) { fLetterSpacingBetweenCharacters = value; }
+
 private:
     StrutStyle fStrutStyle;
     TextStyle fDefaultTextStyle;
@@ -153,6 +160,7 @@ private:
     bool fApplyRoundingHack = true;
     bool fLetterSpacingByCSSSpec = false;
     bool fRenderSoftHyphens = false;
+    bool fLetterSpacingBetweenCharacters = false;
 };
 }  // namespace textlayout
 }  // namespace skia
