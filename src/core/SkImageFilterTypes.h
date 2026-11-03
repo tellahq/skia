@@ -30,7 +30,6 @@
 #include "src/core/SkSpecialImage.h"
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <utility>
 
@@ -1074,23 +1073,6 @@ public:
         return this->drawShader(shaderFn(inputShaders), outputBounds, evaluateInParameterSpace);
     }
 
-    // As eval(), but 'drawFn(SkCanvas*, SkSpan<sk_sp<SkShader>>)' draws the output itself, given
-    // the input shaders in parameter space, onto a transparent canvas over the output bounds whose
-    // matrix maps parameter space to the layer.
-    template <typename DrawFn>
-    FilterResult evalDrawing(DrawFn drawFn,
-                             std::optional<LayerSpace<SkIRect>> explicitOutput = {}) {
-        auto outputBounds = this->outputBounds(explicitOutput);
-        if (outputBounds.isEmpty()) {
-            return {};
-        }
-
-        auto inputShaders = this->createInputShaders(outputBounds,
-                                                     /*evaluateInParameterSpace=*/true);
-        return this->drawInParameterSpace(
-                [&](SkCanvas* canvas) { drawFn(canvas, inputShaders); }, outputBounds);
-    }
-
 private:
     struct SampledFilterResult {
         FilterResult fImage;
@@ -1107,9 +1089,6 @@ private:
     FilterResult drawShader(sk_sp<SkShader> shader,
                             const LayerSpace<SkIRect>& outputBounds,
                             bool evaluateInParameterSpace) const;
-
-    FilterResult drawInParameterSpace(const std::function<void(SkCanvas*)>& draw,
-                                      const LayerSpace<SkIRect>& outputBounds) const;
 
     const Context& fContext; // Must outlive the builder
     skia_private::STArray<1, SampledFilterResult> fInputs;

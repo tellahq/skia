@@ -9,7 +9,6 @@ licenses(["notice"])
 IMAGEFILTERS_FILES = [
     "SkBlendImageFilter.cpp",
     "SkBlurImageFilter.cpp",
-    "SkCallbackImageFilter.cpp",
     "SkColorFilterImageFilter.cpp",
     "SkComposeImageFilter.cpp",
     "SkCropImageFilter.cpp",
