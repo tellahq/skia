@@ -114,6 +114,9 @@ public:
     void ensureTextBlobCachePopulated();
 
     void createEllipsis(SkScalar maxWidth, const SkString& ellipsis, bool ltr);
+    // Where the glyph positions end: the line's width plus the letter spacing left out of it
+    SkScalar glyphsEnd() const { return fAdvance.fX + fTrailingLetterSpacing; }
+    SkRect withoutTrailingLetterSpacing(SkRect clip) const;
     void createSoftHyphen();
 
     // For testing internal structures
@@ -190,6 +193,7 @@ private:
     SkVector fOffset;                   // Text position
     SkScalar fShift;                    // Let right
     SkScalar fWidthWithSpaces;
+    SkScalar fTrailingLetterSpacing;    // Left out of fAdvance (letter spacing between characters)
     std::unique_ptr<Run> fEllipsis;     // In case the line ends with the ellipsis
     std::unique_ptr<Run> fHyphen;       // Visible hyphen for soft hyphen line breaks
     InternalLineMetrics fSizes;                 // Line metrics as a max of all run metrics and struts

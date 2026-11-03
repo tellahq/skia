@@ -203,6 +203,12 @@ private:
     SkScalar fHeight;
     SkScalar fMinIntrinsicWidth;
     SkScalar fMaxIntrinsicWidth;
+    bool fLetterSpacingBetweenCharacters = false;
+
+    // The letter spacing a line ending with this cluster leaves out of its width
+    SkScalar trailingLetterSpacing(const Cluster* cluster) const {
+        return fLetterSpacingBetweenCharacters ? cluster->trailingLetterSpacing() : 0;
+    }
 
     void reset() {
         fWords.clean();

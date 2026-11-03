@@ -351,6 +351,7 @@ Cluster::Cluster(ParagraphImpl* owner,
         , fWidth(width)
         , fHeight(height)
         , fHalfLetterSpacing(0.0)
+        , fTrailingLetterSpacing(0.0)
         , fIsIdeographic(false) {
     size_t whiteSpacesBreakLen = 0;
     size_t intraWordBreakLen = 0;
@@ -427,7 +428,8 @@ void ParagraphImpl::applySpacingAndBuildClusterTable() {
         ) {
         auto& run = fRuns[0];
         auto& style = fTextStyles[0].fStyle;
-        if (!run.isCursiveScript()) {
+        auto spaced = !run.isCursiveScript();
+        if (spaced) {
             // Do not apply letter spacing for script languages (no exception here)
             run.addLetterSpacesEvenly(style.getLetterSpacing());
         }
@@ -437,6 +439,9 @@ void ParagraphImpl::applySpacingAndBuildClusterTable() {
         // This is something Flutter requires
         for (auto& cluster : fClusters) {
             cluster.setHalfLetterSpacing(style.getLetterSpacing() / 2);
+            if (spaced && cluster.endPos() > cluster.startPos()) {
+                cluster.setTrailingLetterSpacing(style.getLetterSpacing());
+            }
         }
 
         return;
@@ -590,10 +595,22 @@ bool ParagraphImpl::shapeTextIntoEndlessLine() {
 
 void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
 
+    SkScalar trailingLetterSpacing = 0;
+    if (fParagraphStyle.getLetterSpacingBetweenCharacters() && fClusters.size() > 1) {
+        // Skip the empty cluster that ends the text, then any trailing whitespace
+        for (auto index = fClusters.size() - 1; index > 0; --index) {
+            auto& cluster = fClusters[index - 1];
+            if (!cluster.isWhitespaceBreak()) {
+                trailingLetterSpacing = cluster.trailingLetterSpacing();
+                break;
+            }
+        }
+    }
+
     if (!fHasLineBreaks &&
         !fHasWhitespacesInside &&
         fPlaceholders.size() == 1 &&
-        fRuns.size() == 1 && fRuns[0].fAdvance.fX <= maxWidth) {
+        fRuns.size() == 1 && fRuns[0].fAdvance.fX - trailingLetterSpacing <= maxWidth) {
         // This is a short version of a line breaking when we know that:
         // 1. We have only one line of text
         // 2. It's shaped into a single run
@@ -641,10 +658,12 @@ void ParagraphImpl::breakShapedTextIntoLines(SkScalar maxWidth) {
                       clusterRange, clusterRangeWithGhosts, run.advance().x(),
                       metrics);
 
-        fLongestLine = nearlyZero(advance.fX) ? run.advance().fX : advance.fX;
+        // The line drops its trailing letter spacing itself
+        advance.fX = fLines.back().width();
+        fLongestLine = nearlyZero(advance.fX) ? run.advance().fX - trailingLetterSpacing : advance.fX;
         fHeight = advance.fY;
         fWidth = maxWidth;
-        fMaxIntrinsicWidth = run.advance().fX;
+        fMaxIntrinsicWidth = run.advance().fX - trailingLetterSpacing;
         fMinIntrinsicWidth = advance.fX;
         fAlphabeticBaseline = fLines.empty() ? fEmptyMetrics.alphabeticBaseline() : fLines.front().alphabeticBaseline();
         fIdeographicBaseline = fLines.empty() ? fEmptyMetrics.ideographicBaseline() : fLines.front().ideographicBaseline();

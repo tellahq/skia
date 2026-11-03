@@ -63,7 +63,8 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
         if (cluster->isHardBreak()) {
         } else if (
                 // TODO: Trying to deal with flutter rounding problem. Must be removed...
-                SkScalar width = fWords.width() + fClusters.width() + cluster->width();
+                SkScalar width = fWords.width() + fClusters.width() + cluster->width() -
+                                 this->trailingLetterSpacing(cluster);
                 breaker.breakLine(width)) {
             if (cluster->isWhitespaceBreak()) {
                 // It's the end of the word
@@ -93,6 +94,7 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
             // Walk further to see if there is a too long word, cluster or glyph
             SkScalar nextWordLength = fClusters.width();
             SkScalar nextShortWordLength = nextWordLength;
+            SkScalar nextWordTrailingLetterSpacing = 0;
             for (auto further = cluster; further != endOfClusters; ++further) {
                 if (further->isSoftBreak() || further->isHardBreak() || further->isWhitespaceBreak()) {
                     break;
@@ -113,8 +115,10 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
                     nextWordLength = std::max(nextWordLength, further->width());
                 } else {
                     nextWordLength += further->width();
+                    nextWordTrailingLetterSpacing = this->trailingLetterSpacing(further);
                 }
             }
+            nextWordLength -= nextWordTrailingLetterSpacing;
             if (nextWordLength > maxWidth) {
                 if (nextNonBreakingSpace != nullptr) {
                     // We only get here if the non-breaking space improves our situation
@@ -143,7 +147,7 @@ void TextWrapper::lookAhead(SkScalar maxWidth, Cluster* endOfClusters, bool appl
                 }
             }
 
-            if (cluster->width() > maxWidth) {
+            if (cluster->width() - this->trailingLetterSpacing(cluster) > maxWidth) {
                 fClusters.extend(cluster);
                 fTooLongCluster = true;
                 fTooLongWord = true;
@@ -230,7 +234,7 @@ SkScalar TextWrapper::getClustersTrimmedWidth() {
         }
         if (trailingSpaces) {
             if (!cluster->isWhitespaceBreak()) {
-                width += cluster->trimmedWidth(cluster->endPos());
+                width += cluster->trimmedWidth(cluster->endPos()) - this->trailingLetterSpacing(cluster);
                 trailingSpaces = false;
             }
             continue;
@@ -290,6 +294,7 @@ void TextWrapper::breakTextIntoLines(ParagraphImpl* parent,
     auto unlimitedLines = maxLines == std::numeric_limits<size_t>::max();
     auto endlessLine = !SkIsFinite(maxWidth);
     auto hasEllipsis = parent->paragraphStyle().ellipsized();
+    fLetterSpacingBetweenCharacters = parent->paragraphStyle().getLetterSpacingBetweenCharacters();
 
     auto disableFirstAscent = parent->paragraphStyle().getTextHeightBehavior() & TextHeightBehavior::kDisableFirstAscent;
     auto disableLastDescent = parent->paragraphStyle().getTextHeightBehavior() & TextHeightBehavior::kDisableLastDescent;
@@ -399,7 +404,15 @@ void TextWrapper::breakTextIntoLines(ParagraphImpl* parent,
 
         softLineMaxIntrinsicWidth += widthWithSpaces;
 
-        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth);
+        // Joined with the next soft line, this line's last spacing goes between characters
+        SkScalar lineTrailingLetterSpacing = 0;
+        for (auto cluster = startLine; cluster > fEndLine.startCluster(); --cluster) {
+            if (!(cluster - 1)->isHardBreak()) {
+                lineTrailingLetterSpacing = this->trailingLetterSpacing(cluster - 1);
+                break;
+            }
+        }
+        fMaxIntrinsicWidth = std::max(fMaxIntrinsicWidth, softLineMaxIntrinsicWidth - lineTrailingLetterSpacing);
         if (fHardLineBreak) {
             softLineMaxIntrinsicWidth = 0;
         }
