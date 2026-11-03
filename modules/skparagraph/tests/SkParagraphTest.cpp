@@ -8591,11 +8591,13 @@ UNIX_ONLY_TEST(SkParagraph_ArabicWithLetterSpacingWhitespacesAsCSS, reporter) {
 UNIX_ONLY_TEST(SkParagraph_LetterSpacingBetweenCharacters, reporter) {
     sk_sp<ResourceFontCollection> fontCollection = sk_make_sp<ResourceFontCollection>();
     SKIP_IF_FONTS_NOT_FOUND(reporter, fontCollection)
+    TestCanvas canvas("SkParagraph_LetterSpacingBetweenCharacters.png");
     const char* text = "Hello";
     const size_t len = strlen(text);
     const SkScalar width = TestCanvasWidth;
 
-    auto layout = [&](SkScalar letterSpacing, TextAlign align, SkScalar layoutWidth) {
+    auto layoutText = [&](const char* text, SkScalar letterSpacing, TextAlign align,
+                          SkScalar layoutWidth) {
         ParagraphStyle paragraph_style;
         paragraph_style.setTextAlign(align);
         paragraph_style.setLetterSpacingBetweenCharacters(true);
@@ -8604,12 +8606,20 @@ UNIX_ONLY_TEST(SkParagraph_LetterSpacingBetweenCharacters, reporter) {
         text_style.setFontFamilies({SkString("Roboto")});
         text_style.setFontSize(40);
         text_style.setLetterSpacing(letterSpacing);
+        SkPaint background;
+        background.setColor(SK_ColorLTGRAY);
+        text_style.setBackgroundColor(background);
         builder.pushStyle(text_style);
-        builder.addText(text, len);
+        builder.addText(text, strlen(text));
         builder.pop();
         auto paragraph = builder.Build();
         paragraph->layout(layoutWidth);
+        // Painting checks that the runs reach the line's width plus its trailing spacing
+        paragraph->paint(canvas.get(), 0, 0);
         return paragraph;
+    };
+    auto layout = [&](SkScalar letterSpacing, TextAlign align, SkScalar layoutWidth) {
+        return layoutText(text, letterSpacing, align, layoutWidth);
     };
     auto box = [&](Paragraph* paragraph, size_t start, size_t end) {
         auto boxes = paragraph->getRectsForRange(start, end, RectHeightStyle::kTight, RectWidthStyle::kTight);
@@ -8645,6 +8655,17 @@ UNIX_ONLY_TEST(SkParagraph_LetterSpacingBetweenCharacters, reporter) {
         }
         auto paragraph = layout(letterSpacing, TextAlign::kLeft, width);
         REPORTER_ASSERT(reporter, SkScalarNearlyEqual(paragraph->getMaxIntrinsicWidth(), spacedWidth, EPSILON100));
+        // Text with whitespace goes through the line breaker, which measures intrinsic widths itself
+        for (const char* spacedText : {"Hello world", "Hi\nHello world"}) {
+            auto wrapped = layoutText(spacedText, letterSpacing, TextAlign::kLeft, width);
+            std::vector<LineMetrics> lines;
+            wrapped->getLineMetrics(lines);
+            SkScalar longest = 0;
+            for (auto& line : lines) {
+                longest = std::max(longest, (SkScalar)line.fWidth);
+            }
+            REPORTER_ASSERT(reporter, SkScalarNearlyEqual(wrapped->getMaxIntrinsicWidth(), longest, EPSILON100));
+        }
         // A line exactly as wide as the spaced text still fits it
         auto exact = layout(letterSpacing, TextAlign::kLeft, spacedWidth + 0.01f);
         std::vector<LineMetrics> metrics;

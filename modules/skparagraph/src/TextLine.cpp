@@ -1169,10 +1169,12 @@ void TextLine::iterateThroughVisualRuns(bool includingGhostSpaces, const RunVisi
         }
     }
 
-    if (!includingGhostSpaces && compareRound(totalWidth, this->width(), fOwner->getApplyRoundingHack()) != 0) {
+    // The runs reach the end of the glyphs, past the line's width by any trailing letter spacing
+    auto glyphsWidth = this->width() + fTrailingLetterSpacing;
+    if (!includingGhostSpaces && compareRound(totalWidth, glyphsWidth, fOwner->getApplyRoundingHack()) != 0) {
     // This is a very important assert!
     // It asserts that 2 different ways of calculation come with the same results
-        SkDEBUGFAILF("ASSERT: %f != %f\n", totalWidth, this->width());
+        SkDEBUGFAILF("ASSERT: %f != %f\n", totalWidth, glyphsWidth);
     }
 }
 
